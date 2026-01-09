@@ -1,8 +1,26 @@
 //! Technical analysis indicators for JejakCuan
 //!
-//! This crate implements technical analysis indicators:
-//! - Moving Averages (SMA, EMA)
+//! This crate provides technical indicators used for stock analysis:
+//! - EMA (Exponential Moving Average)
+//! - Fibonacci Retracement
 //! - RSI (Relative Strength Index)
 //! - MACD (Moving Average Convergence Divergence)
 //! - Bollinger Bands
-//! - Volume analysis
+//! - OBV (On-Balance Volume)
+//! - VPT (Volume Price Trend)
+
+pub mod bollinger;
+pub mod ema;
+pub mod error;
+pub mod fibonacci;
+pub mod macd;
+pub mod rsi;
+pub mod volume;
+
+pub use bollinger::*;
+pub use ema::*;
+pub use error::*;
+pub use fibonacci::*;
+pub use macd::*;
+pub use rsi::*;
+pub use volume::*;
