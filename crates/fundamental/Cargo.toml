@@ -4,7 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rust_decimal.workspace = true
+rust_decimal = { workspace = true, features = ["serde"] }
+rust_decimal_macros = "1"
 thiserror.workspace = true
+serde.workspace = true
+chrono.workspace = true
 
 jejakcuan-core = { path = "../core" }
+
+[dev-dependencies]
+approx = "0.5"

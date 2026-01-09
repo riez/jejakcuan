@@ -1,8 +1,16 @@
 //! Fundamental analysis for JejakCuan
 //!
-//! This crate implements fundamental analysis metrics:
-//! - Price-to-Earnings (P/E) ratio
-//! - Price-to-Book (P/B) ratio
-//! - Debt-to-Equity ratio
-//! - Return on Equity (ROE)
-//! - Dividend yield analysis
+//! This crate provides fundamental valuation metrics:
+//! - P/E Ratio analysis
+//! - EV/EBITDA valuation
+//! - Price-to-Book ratio
+//! - ROE/ROA metrics
+//! - Sector peer comparison
+
+pub mod error;
+pub mod metrics;
+pub mod peers;
+
+pub use error::*;
+pub use metrics::*;
+pub use peers::*;
