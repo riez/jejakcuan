@@ -7,4 +7,5 @@ edition.workspace = true
 serde.workspace = true
 chrono.workspace = true
 rust_decimal.workspace = true
+rust_decimal_macros = "1"
 thiserror.workspace = true
