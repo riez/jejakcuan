@@ -1,0 +1,34 @@
+services:
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: jejakcuan-db
+    environment:
+      POSTGRES_USER: jejakcuan
+      POSTGRES_PASSWORD: jejakcuan_dev
+      POSTGRES_DB: jejakcuan
+    ports:
+      - "5432:5432"
+    volumes:
+      - jejakcuan_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jejakcuan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: jejakcuan-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - jejakcuan_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  jejakcuan_db_data:
+  jejakcuan_redis_data:
