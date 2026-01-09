@@ -47,6 +47,23 @@ interface WatchlistItem {
   added_at: string;
 }
 
+interface FundamentalData {
+  symbol: string;
+  pe_ratio: number | null;
+  pb_ratio: number | null;
+  ps_ratio: number | null;
+  ev_ebitda: number | null;
+  roe: number | null;
+  roa: number | null;
+  profit_margin: number | null;
+  debt_to_equity: number | null;
+  current_ratio: number | null;
+  dcf_intrinsic_value: number | null;
+  dcf_margin_of_safety: number | null;
+  sector_avg_pe: number | null;
+  sector_avg_pb: number | null;
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -164,7 +181,20 @@ class ApiClient {
   async removeFromWatchlist(symbol: string): Promise<void> {
     await this.fetch(`/api/watchlist/${symbol}`, { method: 'DELETE' });
   }
+
+  // Fundamentals
+  async getFundamentals(symbol: string): Promise<FundamentalData | null> {
+    try {
+      return await this.fetch<FundamentalData>(`/api/stocks/${symbol}/fundamentals`);
+    } catch (error) {
+      // Return null for 404 (no data available)
+      if (error instanceof Error && error.message.includes('404')) {
+        return null;
+      }
+      throw error;
+    }
+  }
 }
 
 export const api = new ApiClient();
-export type { Stock, StockScore, StockPrice, WatchlistItem, LoginResponse };
+export type { Stock, StockScore, StockPrice, WatchlistItem, LoginResponse, FundamentalData };

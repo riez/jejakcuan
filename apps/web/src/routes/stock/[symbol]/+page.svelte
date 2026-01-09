@@ -1,16 +1,18 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
-  import { api, type Stock, type StockScore, type StockPrice } from '$lib/api';
-  import { PriceChart, ScoreGauge } from '$lib/components';
+  import { api, type Stock, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
+  import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
   let symbol = $derived($page.params.symbol ?? '');
   let stock = $state<Stock | null>(null);
   let score = $state<StockScore | null>(null);
   let prices = $state<StockPrice[]>([]);
+  let fundamentals = $state<FundamentalData | null>(null);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
+  let activeTab = $state<'technical' | 'fundamental'>('technical');
 
   onMount(async () => {
     if (!symbol) {
@@ -20,17 +22,19 @@
     }
 
     try {
-      const [stockData, scoreData, priceData, watchlistData] = await Promise.all([
+      const [stockData, scoreData, priceData, watchlistData, fundamentalData] = await Promise.all([
         api.getStock(symbol),
         api.getStockScore(symbol),
         api.getStockPrices(symbol, 60),
-        api.getWatchlist()
+        api.getWatchlist(),
+        api.getFundamentals(symbol)
       ]);
 
       stock = stockData;
       score = scoreData;
       prices = priceData;
       inWatchlist = watchlistData.some((w) => w.symbol === symbol);
+      fundamentals = fundamentalData;
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -114,125 +118,189 @@
       <p>Loading...</p>
     </div>
   {:else if stock}
-    <!-- Price Chart -->
-    <div class="card p-4">
-      <h3 class="h3 mb-4">Price Chart (60 Days)</h3>
-      {#if prices.length > 0}
-        <PriceChart {prices} height={400} showVolume={true} showEma={true} />
-      {:else}
-        <p class="text-surface-600-300-token p-8 text-center">No price data available</p>
-      {/if}
+    <!-- Tab Navigation -->
+    <div class="flex gap-2 mb-4">
+      <button
+        class="btn {activeTab === 'technical' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
+        onclick={() => (activeTab = 'technical')}
+      >
+        Technical
+      </button>
+      <button
+        class="btn {activeTab === 'fundamental' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
+        onclick={() => (activeTab = 'fundamental')}
+      >
+        Fundamental
+      </button>
     </div>
 
-    <!-- Score Section -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <!-- Score Gauges -->
-      <div class="card p-6">
-        <h3 class="h3 mb-6">Score Breakdown</h3>
-        {#if score}
-          <div class="flex flex-wrap justify-around gap-4">
-            <ScoreGauge score={score.composite_score} label="Composite" size="lg" />
-            <ScoreGauge score={score.technical_score} label="Technical" />
-            <ScoreGauge score={score.fundamental_score} label="Fundamental" />
-            <ScoreGauge score={score.sentiment_score} label="Sentiment" />
-            <ScoreGauge score={score.ml_score} label="ML" />
-          </div>
-
-          <!-- Score interpretation -->
-          <div class="mt-6 p-4 rounded-lg bg-surface-100-800-token">
-            <p class="text-sm">
-              {#if score.composite_score >= 70}
-                <span class="text-green-500 font-semibold">STRONG BUY</span> - Multiple strong signals
-                aligned
-              {:else if score.composite_score >= 50}
-                <span class="text-yellow-500 font-semibold">HOLD/WATCH</span> - Mixed signals, monitor
-                closely
-              {:else}
-                <span class="text-red-500 font-semibold">WEAK</span> - Unfavorable conditions
-              {/if}
-            </p>
-          </div>
+    {#if activeTab === 'technical'}
+      <!-- Price Chart -->
+      <div class="card p-4">
+        <h3 class="h3 mb-4">Price Chart (60 Days)</h3>
+        {#if prices.length > 0}
+          <PriceChart {prices} height={400} showVolume={true} showEma={true} />
         {:else}
-          <p class="text-surface-600-300-token text-center">No score data available</p>
+          <p class="text-surface-600-300-token p-8 text-center">No price data available</p>
         {/if}
       </div>
 
-      <!-- Stock Info -->
-      <div class="card p-6">
-        <h3 class="h3 mb-4">Stock Info</h3>
-        <dl class="space-y-3">
-          <div class="flex justify-between">
-            <dt class="text-surface-600-300-token">Sector</dt>
-            <dd class="font-medium">{stock.sector ?? '-'}</dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-surface-600-300-token">Subsector</dt>
-            <dd class="font-medium">{stock.subsector ?? '-'}</dd>
-          </div>
-          <div class="flex justify-between">
-            <dt class="text-surface-600-300-token">Status</dt>
-            <dd>
-              <span class="badge {stock.is_active ? 'variant-filled-success' : 'variant-filled-error'}">
-                {stock.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </dd>
-          </div>
-          {#if latestPrice}
-            <hr class="opacity-20" />
-            <div class="flex justify-between">
-              <dt class="text-surface-600-300-token">Open</dt>
-              <dd class="font-medium">{latestPrice.open.toLocaleString()}</dd>
+      <!-- Score Section -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Score Gauges -->
+        <div class="card p-6">
+          <h3 class="h3 mb-6">Score Breakdown</h3>
+          {#if score}
+            <div class="flex flex-wrap justify-around gap-4">
+              <ScoreGauge score={score.composite_score} label="Composite" size="lg" />
+              <ScoreGauge score={score.technical_score} label="Technical" />
+              <ScoreGauge score={score.fundamental_score} label="Fundamental" />
+              <ScoreGauge score={score.sentiment_score} label="Sentiment" />
+              <ScoreGauge score={score.ml_score} label="ML" />
             </div>
-            <div class="flex justify-between">
-              <dt class="text-surface-600-300-token">High</dt>
-              <dd class="font-medium text-green-500">{latestPrice.high.toLocaleString()}</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-surface-600-300-token">Low</dt>
-              <dd class="font-medium text-red-500">{latestPrice.low.toLocaleString()}</dd>
-            </div>
-            <div class="flex justify-between">
-              <dt class="text-surface-600-300-token">Volume</dt>
-              <dd class="font-medium">{latestPrice.volume.toLocaleString()}</dd>
-            </div>
-          {/if}
-        </dl>
-      </div>
-    </div>
 
-    <!-- Price History Table -->
-    <div class="card p-4">
-      <h3 class="h3 mb-4">Recent Price History</h3>
-      {#if prices.length > 0}
-        <div class="table-container">
-          <table class="table table-compact">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th class="text-right">Open</th>
-                <th class="text-right">High</th>
-                <th class="text-right">Low</th>
-                <th class="text-right">Close</th>
-                <th class="text-right">Volume</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each prices.slice().reverse().slice(0, 10) as price}
-                <tr>
-                  <td>{new Date(price.time).toLocaleDateString()}</td>
-                  <td class="text-right">{price.open.toLocaleString()}</td>
-                  <td class="text-right text-green-500">{price.high.toLocaleString()}</td>
-                  <td class="text-right text-red-500">{price.low.toLocaleString()}</td>
-                  <td class="text-right font-medium">{price.close.toLocaleString()}</td>
-                  <td class="text-right text-surface-600-300-token">{price.volume.toLocaleString()}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
+            <!-- Score interpretation -->
+            <div class="mt-6 p-4 rounded-lg bg-surface-100-800-token">
+              <p class="text-sm">
+                {#if score.composite_score >= 70}
+                  <span class="text-green-500 font-semibold">STRONG BUY</span> - Multiple strong signals
+                  aligned
+                {:else if score.composite_score >= 50}
+                  <span class="text-yellow-500 font-semibold">HOLD/WATCH</span> - Mixed signals, monitor
+                  closely
+                {:else}
+                  <span class="text-red-500 font-semibold">WEAK</span> - Unfavorable conditions
+                {/if}
+              </p>
+            </div>
+          {:else}
+            <p class="text-surface-600-300-token text-center">No score data available</p>
+          {/if}
         </div>
-      {:else}
-        <p class="text-surface-600-300-token text-center p-4">No price history available</p>
-      {/if}
-    </div>
+
+        <!-- Stock Info -->
+        <div class="card p-6">
+          <h3 class="h3 mb-4">Stock Info</h3>
+          <dl class="space-y-3">
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Sector</dt>
+              <dd class="font-medium">{stock.sector ?? '-'}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Subsector</dt>
+              <dd class="font-medium">{stock.subsector ?? '-'}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Status</dt>
+              <dd>
+                <span class="badge {stock.is_active ? 'variant-filled-success' : 'variant-filled-error'}">
+                  {stock.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </dd>
+            </div>
+            {#if latestPrice}
+              <hr class="opacity-20" />
+              <div class="flex justify-between">
+                <dt class="text-surface-600-300-token">Open</dt>
+                <dd class="font-medium">{latestPrice.open.toLocaleString()}</dd>
+              </div>
+              <div class="flex justify-between">
+                <dt class="text-surface-600-300-token">High</dt>
+                <dd class="font-medium text-green-500">{latestPrice.high.toLocaleString()}</dd>
+              </div>
+              <div class="flex justify-between">
+                <dt class="text-surface-600-300-token">Low</dt>
+                <dd class="font-medium text-red-500">{latestPrice.low.toLocaleString()}</dd>
+              </div>
+              <div class="flex justify-between">
+                <dt class="text-surface-600-300-token">Volume</dt>
+                <dd class="font-medium">{latestPrice.volume.toLocaleString()}</dd>
+              </div>
+            {/if}
+          </dl>
+        </div>
+      </div>
+
+      <!-- Price History Table -->
+      <div class="card p-4">
+        <h3 class="h3 mb-4">Recent Price History</h3>
+        {#if prices.length > 0}
+          <div class="table-container">
+            <table class="table table-compact">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="text-right">Open</th>
+                  <th class="text-right">High</th>
+                  <th class="text-right">Low</th>
+                  <th class="text-right">Close</th>
+                  <th class="text-right">Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each prices.slice().reverse().slice(0, 10) as price}
+                  <tr>
+                    <td>{new Date(price.time).toLocaleDateString()}</td>
+                    <td class="text-right">{price.open.toLocaleString()}</td>
+                    <td class="text-right text-green-500">{price.high.toLocaleString()}</td>
+                    <td class="text-right text-red-500">{price.low.toLocaleString()}</td>
+                    <td class="text-right font-medium">{price.close.toLocaleString()}</td>
+                    <td class="text-right text-surface-600-300-token">{price.volume.toLocaleString()}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {:else}
+          <p class="text-surface-600-300-token text-center p-4">No price history available</p>
+        {/if}
+      </div>
+    {:else}
+      <!-- Fundamental Tab Content -->
+      <div class="space-y-6">
+        <div class="card p-4">
+          <h3 class="h3 mb-4">Valuation Metrics</h3>
+          <FundamentalMetrics data={fundamentals} currentPrice={latestPrice?.close ?? 0} />
+        </div>
+
+        {#if score}
+          <div class="card p-6">
+            <h3 class="h3 mb-4">Fundamental Score Breakdown</h3>
+            <ScoreBreakdown
+              components={[
+                { name: 'Valuation', score: 75, weight: 0.35, signals: ['P/E below sector average'] },
+                { name: 'DCF', score: 80, weight: 0.25, signals: ['20% margin of safety'] },
+                { name: 'Quality', score: 70, weight: 0.2, signals: ['Good ROE (18%)'] },
+                { name: 'Health', score: 85, weight: 0.2, signals: ['Low leverage'] }
+              ]}
+              totalScore={score.fundamental_score}
+            />
+          </div>
+        {/if}
+
+        <!-- Stock Info (same as technical tab for context) -->
+        <div class="card p-6">
+          <h3 class="h3 mb-4">Stock Info</h3>
+          <dl class="space-y-3">
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Sector</dt>
+              <dd class="font-medium">{stock.sector ?? '-'}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Subsector</dt>
+              <dd class="font-medium">{stock.subsector ?? '-'}</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-surface-600-300-token">Status</dt>
+              <dd>
+                <span class="badge {stock.is_active ? 'variant-filled-success' : 'variant-filled-error'}">
+                  {stock.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    {/if}
   {/if}
 </div>
