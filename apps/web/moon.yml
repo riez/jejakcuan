@@ -6,3 +6,35 @@ tags:
   - 'typescript'
   - 'svelte'
   - 'frontend'
+
+tasks:
+  dev:
+    command: 'pnpm dev'
+    local: true
+    persistent: true
+  
+  build:
+    command: 'pnpm build'
+    inputs:
+      - 'src/**/*'
+      - 'static/**/*'
+      - '*.config.*'
+      - 'package.json'
+    outputs:
+      - 'build'
+      - '.svelte-kit'
+  
+  check:
+    command: 'pnpm check'
+    inputs:
+      - 'src/**/*'
+  
+  lint:
+    command: 'pnpm lint'
+    inputs:
+      - 'src/**/*'
+  
+  format:
+    command: 'pnpm format'
+    inputs:
+      - 'src/**/*'
