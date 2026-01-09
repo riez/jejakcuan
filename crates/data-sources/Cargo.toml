@@ -13,4 +13,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
+# HTML parsing for scraping
+scraper = "0.18"
+rust_decimal_macros = "1"
+
 jejakcuan-core = { path = "../core" }
