@@ -5,3 +5,36 @@ stack: 'backend'
 tags:
   - 'rust'
   - 'api'
+
+dependsOn:
+  - 'core'
+
+tasks:
+  dev:
+    command: 'cargo run'
+    local: true
+    persistent: true
+
+  build:
+    command: 'cargo build --release'
+    inputs:
+      - 'src/**/*'
+      - 'Cargo.toml'
+    outputs:
+      - '../../target/release/jejakcuan-api'
+
+  test:
+    command: 'cargo test'
+    inputs:
+      - 'src/**/*'
+      - 'Cargo.toml'
+
+  lint:
+    command: 'cargo clippy -- -D warnings'
+    inputs:
+      - 'src/**/*'
+
+  fmt:
+    command: 'cargo fmt --check'
+    inputs:
+      - 'src/**/*'
