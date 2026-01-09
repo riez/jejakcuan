@@ -5,9 +5,11 @@
 //! - Yahoo Finance for stock quotes and historical data
 //! - Broker summary data for bandarmology analysis
 //! - News sources for sentiment analysis
+//! - Shareholding data from KSEI/OJK for ownership tracking
 
 pub mod broker;
 pub mod error;
+pub mod shareholding;
 pub mod yahoo;
 
 pub use broker::{
@@ -15,4 +17,9 @@ pub use broker::{
     BrokerActivity, BrokerCategory, BrokerScraper, BrokerSummary,
 };
 pub use error::DataSourceError;
+pub use shareholding::{
+    ConcentrationMetrics, InsiderActivityScore, InstitutionalFlow, OwnershipChange, Shareholder,
+    ShareholderType, ShareholdingScore, ShareholdingScraper, ShareholdingSnapshot,
+    ShareholdingSource,
+};
 pub use yahoo::YahooFinanceClient;
