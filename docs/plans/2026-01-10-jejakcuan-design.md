@@ -438,7 +438,124 @@ Simple single-user auth (not OAuth complexity):
 
 ---
 
-## 7. Implementation Phases
+## 7. Development Workflow (Git Worktrees)
+
+### Parallel Development Strategy
+
+Use Git worktrees to enable multiple subagents to work on independent tasks simultaneously without conflicts.
+
+```
+Main Repository:
+/Users/user/Code/jejakcuan/              # Main worktree (orchestrator)
+
+Parallel Worktrees:
+/Users/user/Code/jejakcuan-worktrees/
+├── api-feature/                          # Rust API development
+├── web-feature/                          # SvelteKit frontend development
+├── ml-feature/                           # Python ML service development
+├── technical-crate/                      # Technical indicators crate
+├── fundamental-crate/                    # Fundamental analysis crate
+└── infra/                                # K3s/Docker infrastructure
+```
+
+### Worktree Commands
+
+```bash
+# Create worktree directory
+mkdir -p ~/Code/jejakcuan-worktrees
+
+# Create worktrees for parallel work
+git worktree add ../jejakcuan-worktrees/api-feature -b feature/api-endpoints
+git worktree add ../jejakcuan-worktrees/web-feature -b feature/web-screener
+git worktree add ../jejakcuan-worktrees/ml-feature -b feature/lstm-model
+git worktree add ../jejakcuan-worktrees/technical-crate -b feature/technical-indicators
+git worktree add ../jejakcuan-worktrees/fundamental-crate -b feature/fundamental-analysis
+
+# List active worktrees
+git worktree list
+
+# Remove worktree after merge
+git worktree remove ../jejakcuan-worktrees/api-feature
+```
+
+### Subagent Assignment Strategy
+
+| Worktree | Subagent Type | Task Scope |
+|----------|---------------|------------|
+| `api-feature` | `code-implementer` + `rust-expert` | Rust API endpoints, database queries |
+| `web-feature` | `code-implementer` + `typescript-expert` | SvelteKit pages, Skeleton UI components |
+| `ml-feature` | `code-implementer` + `python-expert` | LSTM model, IndoBERT, FastAPI service |
+| `technical-crate` | `code-implementer` + `rust-expert` | EMA, Fibonacci, OFI calculations |
+| `fundamental-crate` | `code-implementer` + `rust-expert` | P/E, EV/EBITDA, DCF calculations |
+| `infra` | `code-implementer` | Dockerfiles, K3s manifests, CI/CD |
+
+### Parallel Task Independence Rules
+
+Tasks can run in parallel ONLY if they are:
+1. **File-independent**: No shared files being modified
+2. **Interface-stable**: Working against defined interfaces/contracts
+3. **Test-isolated**: Tests don't conflict or share state
+
+### Parallel-Safe Task Groups
+
+```
+PHASE 1 - Can parallelize:
+├── [worktree-1] Moon + Rust workspace setup
+├── [worktree-2] SvelteKit + Skeleton UI setup
+└── [worktree-3] Python ML scaffold setup
+
+PHASE 2 - Can parallelize:
+├── [worktree-1] Technical indicators crate (EMA, Fibonacci)
+├── [worktree-2] Broker scraper implementation
+└── [worktree-3] Stock detail page UI
+
+PHASE 3 - Can parallelize:
+├── [worktree-1] Fundamental metrics crate (P/E, EV/EBITDA)
+├── [worktree-2] DCF model implementation
+└── [worktree-3] KSEI/OJK scraper
+
+PHASE 4 - Can parallelize:
+├── [worktree-1] LSTM model training pipeline
+├── [worktree-2] ML FastAPI service
+└── [worktree-3] Rust ML client integration
+
+PHASE 5 - Can parallelize:
+├── [worktree-1] IndoBERT fine-tuning
+├── [worktree-2] Social media scrapers
+└── [worktree-3] Sentiment UI components
+```
+
+### Merge Strategy
+
+```bash
+# After subagent completes work in worktree:
+cd ~/Code/jejakcuan                       # Main repo
+git fetch .                               # Fetch local branches
+git merge feature/api-endpoints --no-ff  # Merge with commit
+git worktree remove ../jejakcuan-worktrees/api-feature
+git branch -d feature/api-endpoints      # Clean up branch
+```
+
+### Conflict Prevention
+
+1. **Define interfaces first**: Create trait/type definitions before parallel implementation
+2. **Lock shared files**: If modifying shared config (moon.yml, Cargo.toml), serialize those tasks
+3. **Integration branch**: Merge features to `develop` branch, then to `main`
+4. **CI validation**: All worktree branches must pass CI before merge
+
+### Orchestrator Responsibilities
+
+The main session (orchestrator) should:
+1. Create worktrees before dispatching subagents
+2. Provide exact file paths and interface contracts to each subagent
+3. Wait for all parallel tasks to complete
+4. Merge branches in dependency order
+5. Run integration tests after merges
+6. Clean up worktrees after successful merge
+
+---
+
+## 8. Implementation Phases
 
 ### Phase 1: Foundation (Weeks 1-3)
 
@@ -586,7 +703,7 @@ Simple single-user auth (not OAuth complexity):
 
 ---
 
-## 8. Technical Specifications
+## 9. Technical Specifications
 
 ### Rust Crates Dependencies
 
@@ -647,7 +764,7 @@ dependencies = [
 
 ---
 
-## 9. Data Source API Reference
+## 10. Data Source API Reference
 
 ### Yahoo Finance (yfinance)
 
@@ -692,7 +809,7 @@ Format: Web interface, requires authenticated scraping
 
 ---
 
-## 10. Broker Code Reference
+## 11. Broker Code Reference
 
 ### Foreign Institutional (Highest Weight)
 
@@ -723,7 +840,7 @@ Format: Web interface, requires authenticated scraping
 
 ---
 
-## 11. Risk Considerations
+## 12. Risk Considerations
 
 ### Technical Risks
 
