@@ -6,11 +6,14 @@
 //! - Price-to-Book ratio
 //! - ROE/ROA metrics
 //! - Sector peer comparison
+//! - DCF (Discounted Cash Flow) valuation
 
+pub mod dcf;
 pub mod error;
 pub mod metrics;
 pub mod peers;
 
+pub use dcf::*;
 pub use error::*;
 pub use metrics::*;
 pub use peers::*;
