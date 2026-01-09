@@ -10,8 +10,8 @@ tags:
 tasks:
   dev:
     command: 'pnpm dev'
-    local: true
-    persistent: true
+    options:
+      persistent: true
   
   build:
     command: 'pnpm build'

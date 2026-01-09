@@ -8,11 +8,9 @@ tags:
 
 tasks:
   dev:
-    command: 'uvicorn jejakcuan_ml.main:app --reload --host 0.0.0.0 --port 8000'
+    command: 'cd src && uvicorn jejakcuan_ml.main:app --reload --host 0.0.0.0 --port 8000'
     options:
-      workingDir: 'src'
-    local: true
-    persistent: true
+      persistent: true
 
   test:
     command: 'pytest'

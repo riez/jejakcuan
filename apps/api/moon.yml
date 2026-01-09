@@ -12,16 +12,14 @@ dependsOn:
 tasks:
   dev:
     command: 'cargo run'
-    local: true
-    persistent: true
+    options:
+      persistent: true
 
   build:
     command: 'cargo build --release'
     inputs:
       - 'src/**/*'
       - 'Cargo.toml'
-    outputs:
-      - '../../target/release/jejakcuan-api'
 
   test:
     command: 'cargo test'
