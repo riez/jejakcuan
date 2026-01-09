@@ -1,0 +1,10 @@
+[package]
+name = "jejakcuan-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+thiserror.workspace = true
