@@ -266,8 +266,10 @@ impl TechnicalScoreEngine {
         if input.prices.len() >= 25 {
             // Simple slope check: compare recent EMA to older EMA
             // This is a simplified version; actual EMA slope would require the full EMA series
-            let recent_avg: Decimal =
-                input.prices[input.prices.len() - 5..].iter().sum::<Decimal>() / dec!(5);
+            let recent_avg: Decimal = input.prices[input.prices.len() - 5..]
+                .iter()
+                .sum::<Decimal>()
+                / dec!(5);
             let older_avg: Decimal = input.prices[input.prices.len() - 10..input.prices.len() - 5]
                 .iter()
                 .sum::<Decimal>()
