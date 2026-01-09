@@ -10,6 +10,9 @@ pub enum TechnicalError {
     #[error("Invalid period: {0}")]
     InvalidPeriod(String),
 
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
+
     #[error("Calculation error: {0}")]
     CalculationError(String),
 }
