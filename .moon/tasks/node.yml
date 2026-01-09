@@ -1,0 +1,33 @@
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+  tests:
+    - 'tests/**/*'
+    - '**/*.test.*'
+
+tasks:
+  dev:
+    command: 'pnpm dev'
+    local: true
+    options:
+      persistent: true
+
+  build:
+    command: 'pnpm build'
+    inputs:
+      - '@group(sources)'
+    outputs:
+      - 'build'
+      - '.svelte-kit'
+
+  lint:
+    command: 'pnpm lint'
+    inputs:
+      - '@group(sources)'
+
+  check:
+    command: 'pnpm check'
+    inputs:
+      - '@group(sources)'

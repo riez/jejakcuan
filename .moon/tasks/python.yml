@@ -1,0 +1,31 @@
+$schema: 'https://moonrepo.dev/schemas/tasks.json'
+
+fileGroups:
+  sources:
+    - 'src/**/*'
+    - '*.py'
+  tests:
+    - 'tests/**/*'
+
+tasks:
+  dev:
+    command: 'uvicorn main:app --reload'
+    local: true
+    options:
+      persistent: true
+
+  lint:
+    command: 'ruff check .'
+    inputs:
+      - '@group(sources)'
+
+  fmt:
+    command: 'ruff format --check .'
+    inputs:
+      - '@group(sources)'
+
+  test:
+    command: 'pytest'
+    inputs:
+      - '@group(sources)'
+      - '@group(tests)'

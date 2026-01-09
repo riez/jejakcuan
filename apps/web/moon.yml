@@ -1,0 +1,8 @@
+$schema: 'https://moonrepo.dev/schemas/project.json'
+language: 'typescript'
+type: 'application'
+stack: 'frontend'
+tags:
+  - 'typescript'
+  - 'svelte'
+  - 'frontend'

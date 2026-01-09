@@ -1,0 +1,28 @@
+
+# Moon
+.moon/cache
+.moon/docker
+
+# Rust
+target/
+Cargo.lock
+
+# Node
+node_modules/
+.svelte-kit/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.local
