@@ -1,4 +1,4 @@
-"""FastAPI application for JejakCuan ML service."""
+"""JejakCuan ML Service - FastAPI application."""
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -14,24 +14,34 @@ from .routers import predict_router, sentiment_router
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
-    # Startup: Load models
-    lstm_predictor.load(settings.lstm_model_path)
-    sentiment_analyzer.load(settings.sentiment_model_path)
+    # Startup: Load models (non-blocking if not available)
+    try:
+        lstm_predictor.load(settings.lstm_model_path)
+    except Exception:
+        pass  # Model will be loaded on first request or via /predict/load
+
+    try:
+        sentiment_analyzer.load(settings.sentiment_model_path)
+    except Exception:
+        pass  # Model will be loaded on demand
+
     yield
     # Shutdown: Cleanup if needed
 
 
 app = FastAPI(
-    title=settings.app_name,
-    version="0.1.0",
-    description="ML service for stock prediction and sentiment analysis",
+    title="JejakCuan ML Service",
+    description="Machine learning service for Indonesian stock prediction and sentiment analysis",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
 )
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Configure properly in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,10 +55,10 @@ app.include_router(sentiment_router, prefix=settings.api_prefix)
 @app.get("/")
 async def root() -> dict[str, str]:
     """Root endpoint."""
-    return {"message": "JejakCuan ML Service v0.1.0"}
+    return {"message": "JejakCuan ML Service v1.0.0"}
 
 
 @app.get("/health")
-async def health() -> dict[str, str]:
+async def health_check() -> dict[str, str]:
     """Health check endpoint."""
-    return {"status": "OK"}
+    return {"status": "healthy", "service": "ml"}
