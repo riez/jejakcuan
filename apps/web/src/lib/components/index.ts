@@ -7,3 +7,5 @@ export { default as WatchlistCard } from './WatchlistCard.svelte';
 export { default as SectorHeatmap } from './SectorHeatmap.svelte';
 export { default as TopMovers } from './TopMovers.svelte';
 export { default as IndexSummary } from './IndexSummary.svelte';
+export { default as SignalCard } from './SignalCard.svelte';
+export { default as SignalFilters } from './SignalFilters.svelte';
