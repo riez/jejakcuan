@@ -3,7 +3,11 @@
 //! This module exports the API router and related components for both
 //! the main server binary and integration tests.
 
-use axum::{http::HeaderValue, routing::get, Router};
+use axum::{
+    http::{header, HeaderValue, Method},
+    routing::get,
+    Router,
+};
 use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -39,8 +43,19 @@ pub fn create_app(db: PgPool, config: Config) -> Router {
                     "http://localhost:3000".parse::<HeaderValue>().unwrap(),
                     "http://127.0.0.1:5173".parse::<HeaderValue>().unwrap(),
                 ]))
-                .allow_methods(tower_http::cors::Any)
-                .allow_headers(tower_http::cors::Any)
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
+                .allow_headers([
+                    header::CONTENT_TYPE,
+                    header::AUTHORIZATION,
+                    header::ACCEPT,
+                    header::COOKIE,
+                ])
                 .allow_credentials(true),
         )
         .layer(TraceLayer::new_for_http())
