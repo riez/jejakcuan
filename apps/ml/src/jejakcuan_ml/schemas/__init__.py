@@ -18,8 +18,19 @@ from .prediction import (
     TrainingResponse,
     TrainingStatus,
 )
+from .text_sources import (
+    AggregatedSentiment,
+    NewsArticle,
+    SentimentTrend,
+    SocialPost,
+    SymbolMention,
+    TextBatchRequest,
+    TextSentimentResult,
+    TextSource,
+)
 
 __all__ = [
+    # Prediction schemas
     "BatchPredictionRequest",
     "BatchPredictionResponse",
     "BatchSentimentRequest",
@@ -36,4 +47,13 @@ __all__ = [
     "TrainingRequest",
     "TrainingResponse",
     "TrainingStatus",
+    # Text source schemas
+    "AggregatedSentiment",
+    "NewsArticle",
+    "SentimentTrend",
+    "SocialPost",
+    "SymbolMention",
+    "TextBatchRequest",
+    "TextSentimentResult",
+    "TextSource",
 ]
