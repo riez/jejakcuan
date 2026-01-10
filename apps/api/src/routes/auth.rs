@@ -17,17 +17,26 @@ async fn login(
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<LoginResponse>), AuthError> {
+    tracing::debug!("Login attempt for user: {}", req.username);
+    tracing::debug!("Expected username: {}", state.config.username);
+    tracing::debug!("Password hash (first 50 chars): {}", &state.config.password_hash.chars().take(50).collect::<String>());
+    
     // Verify credentials
     if req.username != state.config.username {
+        tracing::debug!("Username mismatch");
         return Err(AuthError("Invalid credentials".to_string()));
     }
 
     // For development, accept "admin123" directly if hash is default
     let valid = if state.config.password_hash.contains("random_salt_here") {
+        tracing::debug!("Using default password check");
         req.password == "admin123"
     } else {
+        tracing::debug!("Verifying password against hash");
         verify_password(&req.password, &state.config.password_hash)
     };
+
+    tracing::debug!("Password valid: {}", valid);
 
     if !valid {
         return Err(AuthError("Invalid credentials".to_string()));
