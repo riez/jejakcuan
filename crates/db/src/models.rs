@@ -80,15 +80,28 @@ pub struct FinancialsRow {
 pub struct StockScoreRow {
     pub time: DateTime<Utc>,
     pub symbol: String,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub composite_score: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub technical_score: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub fundamental_score: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub sentiment_score: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub ml_score: Decimal,
     pub technical_breakdown: Option<serde_json::Value>,
     pub fundamental_breakdown: Option<serde_json::Value>,
     pub sentiment_breakdown: Option<serde_json::Value>,
     pub ml_breakdown: Option<serde_json::Value>,
+}
+
+fn serialize_decimal_as_f64<S>(value: &Decimal, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use rust_decimal::prelude::ToPrimitive;
+    serializer.serialize_f64(value.to_f64().unwrap_or(0.0))
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
