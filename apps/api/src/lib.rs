@@ -3,10 +3,10 @@
 //! This module exports the API router and related components for both
 //! the main server binary and integration tests.
 
-use axum::{routing::get, Router};
+use axum::{http::HeaderValue, routing::get, Router};
 use sqlx::PgPool;
 use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
@@ -34,9 +34,14 @@ pub fn create_app(db: PgPool, config: Config) -> Router {
         .nest("/api/watchlist", watchlist_routes())
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
+                .allow_origin(AllowOrigin::list([
+                    "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+                    "http://localhost:3000".parse::<HeaderValue>().unwrap(),
+                    "http://127.0.0.1:5173".parse::<HeaderValue>().unwrap(),
+                ]))
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any)
+                .allow_credentials(true),
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
