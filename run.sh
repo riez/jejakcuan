@@ -81,11 +81,11 @@ setup_env() {
 
 run_migrations() {
     echo -e "\n${BLUE}Running database migrations...${NC}"
-    if [ -f "$PROJECT_ROOT/crates/db/schema.sql" ]; then
-        PGPASSWORD=jejakcuan_dev psql -h localhost -U jejakcuan -d jejakcuan -f "$PROJECT_ROOT/crates/db/schema.sql" 2>/dev/null || true
+    if [ -f "$PROJECT_ROOT/crates/db/migrations/001_initial_schema.sql" ]; then
+        PGPASSWORD=jejakcuan_dev psql -h localhost -U jejakcuan -d jejakcuan -f "$PROJECT_ROOT/crates/db/migrations/001_initial_schema.sql" 2>/dev/null || true
         print_status "Migrations applied"
     else
-        print_warning "No schema.sql found, skipping migrations"
+        print_warning "No migration file found, skipping migrations"
     fi
 }
 
