@@ -1,21 +1,6 @@
-use axum::{routing::get, Router};
-use sqlx::PgPool;
-use std::sync::Arc;
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod auth;
-mod config;
-mod routes;
-
-use config::Config;
-use routes::{auth_routes, stock_routes, watchlist_routes};
-
-pub struct AppState {
-    pub db: PgPool,
-    pub config: Config,
-}
+use jejakcuan_api::{config::Config, create_app};
 
 #[tokio::main]
 async fn main() {
@@ -39,39 +24,12 @@ async fn main() {
 
     tracing::info!("Connected to database");
 
-    // Create app state
-    let state = Arc::new(AppState {
-        db,
-        config: config.clone(),
-    });
-
-    // Build router
-    let app = Router::new()
-        .route("/", get(root))
-        .route("/health", get(health))
-        .nest("/api/auth", auth_routes())
-        .nest("/api/stocks", stock_routes())
-        .nest("/api/watchlist", watchlist_routes())
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        )
-        .layer(TraceLayer::new_for_http())
-        .with_state(state);
+    // Build the application
+    let app = create_app(db, config.clone());
 
     // Run server
     let addr = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, app).await.unwrap();
-}
-
-async fn root() -> &'static str {
-    "JejakCuan API v0.1.0"
-}
-
-async fn health() -> &'static str {
-    "OK"
 }

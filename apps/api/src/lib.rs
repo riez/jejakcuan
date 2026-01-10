@@ -1,0 +1,72 @@
+//! JejakCuan API library
+//!
+//! This module exports the API router and related components for both
+//! the main server binary and integration tests.
+
+use axum::{routing::get, Router};
+use sqlx::PgPool;
+use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
+
+pub mod auth;
+pub mod config;
+pub mod routes;
+
+use config::Config;
+use routes::{auth_routes, stock_routes, watchlist_routes};
+
+/// Application state shared across all handlers
+pub struct AppState {
+    pub db: PgPool,
+    pub config: Config,
+}
+
+/// Create the application router with all routes configured
+pub fn create_app(db: PgPool, config: Config) -> Router {
+    let state = Arc::new(AppState { db, config });
+
+    Router::new()
+        .route("/", get(root))
+        .route("/health", get(health))
+        .nest("/api/auth", auth_routes())
+        .nest("/api/stocks", stock_routes())
+        .nest("/api/watchlist", watchlist_routes())
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        )
+        .layer(TraceLayer::new_for_http())
+        .with_state(state)
+}
+
+async fn root() -> &'static str {
+    "JejakCuan API v0.1.0"
+}
+
+async fn health() -> &'static str {
+    "OK"
+}
+
+#[cfg(test)]
+pub mod test_utils {
+    //! Test utilities for API testing
+
+    use super::*;
+
+    /// Create a test configuration
+    pub fn test_config() -> Config {
+        Config {
+            database_url: "postgres://test:test@localhost:5432/test".to_string(),
+            redis_url: "redis://localhost:6379".to_string(),
+            jwt_secret: "test_secret_for_testing_only".to_string(),
+            username: "admin".to_string(),
+            password_hash: "$argon2id$v=19$m=19456,t=2,p=1$random_salt_here$hashed_password"
+                .to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 0, // Random port for testing
+        }
+    }
+}
