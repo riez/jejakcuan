@@ -569,4 +569,399 @@ mod tests {
         assert!(score.score > dec!(50)); // Should be positive due to institutional accumulation
         assert!(score.liquidity_score > dec!(90)); // 50% free float is good
     }
+
+    // === Additional Edge Case Tests ===
+
+    #[test]
+    fn test_concentration_hhi_highly_concentrated() {
+        // Single owner with 80% - should be highly concentrated
+        let snapshot = ShareholdingSnapshot::new(
+            "TEST".to_string(),
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            100_000_000,
+            vec![
+                make_shareholder("Major Owner", ShareholderType::Insider, 80_000_000, 80),
+                make_shareholder("Minor Owner", ShareholderType::Public, 20_000_000, 20),
+            ],
+        );
+
+        let metrics = ConcentrationMetrics::from_snapshot(&snapshot);
+
+        // HHI = 80^2 + 20^2 = 6400 + 400 = 6800
+        assert!(metrics.hhi > dec!(2500));
+        assert!(metrics.is_highly_concentrated());
+        assert!(!metrics.is_moderately_concentrated());
+    }
+
+    #[test]
+    fn test_concentration_hhi_moderately_concentrated() {
+        // More evenly distributed
+        let snapshot = ShareholdingSnapshot::new(
+            "TEST".to_string(),
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            100_000_000,
+            vec![
+                make_shareholder("Owner A", ShareholderType::Institution, 30_000_000, 30),
+                make_shareholder("Owner B", ShareholderType::Institution, 25_000_000, 25),
+                make_shareholder("Owner C", ShareholderType::Institution, 25_000_000, 25),
+                make_shareholder("Public", ShareholderType::Public, 20_000_000, 20),
+            ],
+        );
+
+        let metrics = ConcentrationMetrics::from_snapshot(&snapshot);
+
+        // HHI = 30^2 + 25^2 + 25^2 + 20^2 = 900 + 625 + 625 + 400 = 2550
+        // This is right at the boundary
+        assert!(metrics.is_highly_concentrated() || metrics.is_moderately_concentrated());
+    }
+
+    #[test]
+    fn test_concentration_empty_shareholders() {
+        let snapshot = ShareholdingSnapshot::new(
+            "TEST".to_string(),
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            100_000_000,
+            vec![],
+        );
+
+        let metrics = ConcentrationMetrics::from_snapshot(&snapshot);
+
+        assert_eq!(metrics.hhi, Decimal::ZERO);
+        assert_eq!(metrics.top_1_percentage, Decimal::ZERO);
+        assert_eq!(metrics.top_3_percentage, Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_insider_activity_bearish() {
+        let changes = vec![
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "CEO",
+                ShareholderType::Insider,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                200_000,
+                100_000, // Selling half
+                Decimal::from(2),
+                Decimal::from(1),
+            ),
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "CFO",
+                ShareholderType::Insider,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                100_000,
+                50_000, // Selling half
+                Decimal::from(1),
+                Decimal::new(5, 1),
+            ),
+        ];
+
+        let score = InsiderActivityScore::from_changes(&changes);
+
+        assert!(score.is_bearish());
+        assert_eq!(score.direction, ChangeDirection::Decrease);
+        assert!(score.score < dec!(40));
+        assert!(score.net_change < 0);
+    }
+
+    #[test]
+    fn test_insider_activity_neutral() {
+        // No insider changes
+        let changes = vec![OwnershipChange::from_snapshots(
+            "TEST",
+            "Fund A",
+            ShareholderType::Institution, // Not an insider
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            1_000_000,
+            2_000_000,
+            Decimal::from(5),
+            Decimal::from(10),
+        )];
+
+        let score = InsiderActivityScore::from_changes(&changes);
+
+        assert_eq!(score.transaction_count, 0);
+        assert_eq!(score.total_buying, 0);
+        assert_eq!(score.total_selling, 0);
+        // With no insider activity, should be neutral
+        assert_eq!(score.score, dec!(50));
+    }
+
+    #[test]
+    fn test_insider_activity_significant_buys() {
+        let changes = vec![
+            OwnershipChange {
+                symbol: "TEST".to_string(),
+                shareholder_name: "CEO".to_string(),
+                shareholder_type: ShareholderType::Insider,
+                report_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                previous_shares: 100_000,
+                current_shares: 500_000,
+                change_shares: 400_000,
+                previous_percentage: Decimal::from(1),
+                current_percentage: Decimal::from(5),
+                change_percentage: Decimal::from(4),
+                direction: ChangeDirection::Increase,
+                is_significant: true, // > 1% change
+            },
+            OwnershipChange {
+                symbol: "TEST".to_string(),
+                shareholder_name: "CFO".to_string(),
+                shareholder_type: ShareholderType::Insider,
+                report_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                previous_shares: 50_000,
+                current_shares: 200_000,
+                change_shares: 150_000,
+                previous_percentage: Decimal::new(5, 1),
+                current_percentage: Decimal::from(2),
+                change_percentage: Decimal::new(15, 1),
+                direction: ChangeDirection::Increase,
+                is_significant: true,
+            },
+        ];
+
+        let score = InsiderActivityScore::from_changes(&changes);
+
+        // Multiple significant buys should boost score
+        assert!(score.score > dec!(75));
+        assert_eq!(score.significant_buys.len(), 2);
+        assert!(score.significant_buys.contains(&"CEO".to_string()));
+        assert!(score.significant_buys.contains(&"CFO".to_string()));
+    }
+
+    #[test]
+    fn test_institutional_flow_distribution() {
+        let changes = vec![
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund A",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                2_000_000,
+                1_000_000, // Selling half
+                Decimal::from(10),
+                Decimal::from(5),
+            ),
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund B",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                500_000,
+                0, // Full exit
+                Decimal::new(25, 1),
+                Decimal::ZERO,
+            ),
+        ];
+
+        let flow = InstitutionalFlow::from_changes(&changes);
+
+        assert!(flow.is_distributing());
+        assert!(!flow.is_accumulating());
+        assert_eq!(flow.distributors.len(), 1);
+        assert_eq!(flow.exits.len(), 1);
+        assert!(flow.exits.contains(&"Fund B".to_string()));
+        assert!(flow.net_shares < 0);
+    }
+
+    #[test]
+    fn test_institutional_flow_mixed() {
+        let changes = vec![
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund A",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                1_000_000,
+                2_000_000, // Buying
+                Decimal::from(5),
+                Decimal::from(10),
+            ),
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund B",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                1_500_000,
+                500_000, // Selling
+                Decimal::new(75, 1),
+                Decimal::new(25, 1),
+            ),
+        ];
+
+        let flow = InstitutionalFlow::from_changes(&changes);
+
+        // Net is 1M - 1M = 0, but we have both accumulators and distributors
+        assert_eq!(flow.accumulators.len(), 1);
+        assert_eq!(flow.distributors.len(), 1);
+    }
+
+    #[test]
+    fn test_detect_accumulation_pattern_insufficient_data() {
+        // Only one snapshot - not enough data
+        let snapshots = vec![make_snapshot(vec![], 10, 20, 70)];
+
+        assert!(!detect_accumulation_pattern(&snapshots));
+    }
+
+    #[test]
+    fn test_detect_accumulation_pattern_interrupted() {
+        // Pattern is interrupted
+        let snapshots = vec![
+            make_snapshot(vec![], 10, 20, 70),
+            make_snapshot(vec![], 12, 22, 66), // +4% increase
+            make_snapshot(vec![], 10, 20, 70), // Reset - breaks pattern
+            make_snapshot(vec![], 12, 22, 66), // +4% increase again
+        ];
+
+        // Consecutive increases reset at position 2
+        assert!(!detect_accumulation_pattern(&snapshots));
+    }
+
+    #[test]
+    fn test_detect_distribution_pattern_insufficient_data() {
+        let snapshots = vec![make_snapshot(vec![], 20, 30, 50)];
+
+        assert!(!detect_distribution_pattern(&snapshots));
+    }
+
+    #[test]
+    fn test_shareholding_score_low_free_float() {
+        let snapshot = make_snapshot(
+            vec![
+                make_shareholder("Insider", ShareholderType::Insider, 80_000_000, 80),
+                make_shareholder("Public", ShareholderType::Public, 20_000_000, 20),
+            ],
+            80,
+            0,
+            15, // Very low free float
+        );
+
+        let score = ShareholdingScore::calculate(&snapshot, &[]);
+
+        // Low free float should generate insight
+        assert!(score.insights.iter().any(|s| s.contains("Low free float")));
+        // Liquidity score should be capped
+        assert!(score.liquidity_score < dec!(40));
+    }
+
+    #[test]
+    fn test_shareholding_score_high_concentration() {
+        let snapshot = ShareholdingSnapshot {
+            symbol: "TEST".to_string(),
+            report_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            total_shares: 100_000_000,
+            shareholders: vec![make_shareholder(
+                "Major",
+                ShareholderType::Insider,
+                90_000_000,
+                90,
+            )],
+            free_float: Decimal::from(10),
+            insider_ownership: Decimal::from(90),
+            institutional_ownership: Decimal::ZERO,
+            top_5_concentration: Decimal::from(90),
+        };
+
+        let score = ShareholdingScore::calculate(&snapshot, &[]);
+
+        // Should mention highly concentrated ownership
+        assert!(score
+            .insights
+            .iter()
+            .any(|s| s.contains("concentrated ownership") || s.contains("Low free float")));
+    }
+
+    #[test]
+    fn test_shareholding_score_with_distribution() {
+        let snapshot = make_snapshot(
+            vec![
+                make_shareholder("Insider", ShareholderType::Insider, 20_000_000, 20),
+                make_shareholder("Fund", ShareholderType::Institution, 20_000_000, 20),
+                make_shareholder("Public", ShareholderType::Public, 60_000_000, 60),
+            ],
+            20,
+            20,
+            60,
+        );
+
+        let changes = vec![
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                30_000_000,
+                20_000_000, // Selling
+                Decimal::from(30),
+                Decimal::from(20),
+            ),
+            OwnershipChange::from_snapshots(
+                "TEST",
+                "Fund B",
+                ShareholderType::Institution,
+                NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+                10_000_000,
+                0, // Exit
+                Decimal::from(10),
+                Decimal::ZERO,
+            ),
+        ];
+
+        let score = ShareholdingScore::calculate(&snapshot, &changes);
+
+        // Distribution should lower institutional score
+        assert!(score.institutional_score < dec!(50));
+        // Should mention distribution in insights
+        assert!(score.insights.iter().any(|s| s.contains("distributing")));
+    }
+
+    #[test]
+    fn test_concentration_top_percentages() {
+        let snapshot = ShareholdingSnapshot::new(
+            "TEST".to_string(),
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            100_000_000,
+            vec![
+                make_shareholder("A", ShareholderType::Insider, 25_000_000, 25),
+                make_shareholder("B", ShareholderType::Institution, 20_000_000, 20),
+                make_shareholder("C", ShareholderType::Institution, 15_000_000, 15),
+                make_shareholder("D", ShareholderType::Institution, 10_000_000, 10),
+                make_shareholder("E", ShareholderType::Institution, 10_000_000, 10),
+                make_shareholder("F", ShareholderType::Public, 8_000_000, 8),
+                make_shareholder("G", ShareholderType::Public, 7_000_000, 7),
+                make_shareholder("H", ShareholderType::Public, 5_000_000, 5),
+            ],
+        );
+
+        let metrics = ConcentrationMetrics::from_snapshot(&snapshot);
+
+        assert_eq!(metrics.top_1_percentage, Decimal::from(25));
+        assert_eq!(metrics.top_3_percentage, Decimal::from(60)); // 25+20+15
+        assert_eq!(metrics.top_5_percentage, Decimal::from(80)); // 25+20+15+10+10
+    }
+
+    #[test]
+    fn test_insider_score_bounds() {
+        // Test that score is clamped between 0 and 100
+        let extreme_selling = vec![OwnershipChange {
+            symbol: "TEST".to_string(),
+            shareholder_name: "CEO".to_string(),
+            shareholder_type: ShareholderType::Insider,
+            report_date: NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            previous_shares: 10_000_000,
+            current_shares: 0,
+            change_shares: -10_000_000,
+            previous_percentage: Decimal::from(50),
+            current_percentage: Decimal::ZERO,
+            change_percentage: Decimal::from(-50),
+            direction: ChangeDirection::Decrease,
+            is_significant: true,
+        }];
+
+        let score = InsiderActivityScore::from_changes(&extreme_selling);
+
+        assert!(score.score >= Decimal::ZERO);
+        assert!(score.score <= dec!(100));
+    }
 }
