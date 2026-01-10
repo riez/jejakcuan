@@ -2,8 +2,10 @@
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import torch
 import torch.nn as nn
 
@@ -168,7 +170,7 @@ class LSTMPredictor:
 
     def predict_from_features(
         self,
-        features: np.ndarray,
+        features: npt.NDArray[Any],
         symbol: str = "UNKNOWN",
         horizon_days: int = 5,
     ) -> PricePredictionResponse:
@@ -180,7 +182,7 @@ class LSTMPredictor:
             horizon_days: Prediction horizon
 
         Returns:
-            Prediction response
+            Prediction response with probabilities
         """
         if not self.loaded or self.model is None:
             raise RuntimeError("Model not loaded")
@@ -206,6 +208,9 @@ class LSTMPredictor:
         direction_map = {0: Direction.DOWN, 1: Direction.SIDEWAYS, 2: Direction.UP}
         direction = direction_map.get(int(pred_class), Direction.SIDEWAYS)
 
+        # Extract probabilities
+        prob_values = probs[0].cpu().numpy()
+
         return PricePredictionResponse(
             symbol=symbol,
             timestamp=datetime.utcnow(),
@@ -213,6 +218,11 @@ class LSTMPredictor:
             confidence=confidence,
             horizon_days=horizon_days,
             model_version=self.version,
+            probabilities={
+                "down": float(prob_values[0]),
+                "sideways": float(prob_values[1]),
+                "up": float(prob_values[2]),
+            },
         )
 
     def save(self, model_path: str) -> None:
