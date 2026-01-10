@@ -15,10 +15,11 @@ class SentimentAnalyzer:
         self.version = "0.1.0"
         self.loaded = False
 
-    def load(self, model_path: str) -> None:
+    def load(self, model_path: str | None = None) -> bool:
         """Load model from path."""
         # TODO: Implement actual model loading
         self.loaded = True
+        return True
 
     def analyze(self, text: str) -> SentimentResponse:
         """Analyze sentiment of Indonesian text."""
@@ -34,11 +35,16 @@ class SentimentAnalyzer:
 
     def _extract_symbols(self, text: str) -> list[str]:
         """Extract stock symbols from text."""
-        # Simple pattern: 4 uppercase letters that might be stock codes
-        pattern = r"\b([A-Z]{4})\b"
-        matches = re.findall(pattern, text)
+        # Pattern 1: 4 uppercase letters that might be stock codes
+        pattern1 = r"\b([A-Z]{4})\b"
+        matches = set(re.findall(pattern1, text))
+        
+        # Pattern 2: $SYMBOL pattern (cashtag style)
+        pattern2 = r"\$([A-Z]{4})"
+        matches.update(re.findall(pattern2, text))
+        
         # Filter to likely IDX symbols (basic heuristic)
-        return list(set(matches))[:5]
+        return list(matches)[:5]
 
 
 # Global instance
