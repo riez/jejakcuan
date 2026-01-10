@@ -28,3 +28,7 @@ jejakcuan-data-sources = { path = "../../crates/data-sources" }
 # Additional
 axum-extra = { version = "0.9", features = ["cookie"] }
 time = "0.3"
+
+[dev-dependencies]
+axum-test = "14"
+tower = { version = "0.4", features = ["util"] }

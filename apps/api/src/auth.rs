@@ -143,3 +143,65 @@ pub fn hash_password(password: &str) -> Result<String, AuthError> {
         .map(|h| h.to_string())
         .map_err(|e| AuthError(format!("Failed to hash password: {}", e)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_token_success() {
+        let secret = "test_secret_123";
+        let username = "testuser";
+
+        let result = create_token(username, secret);
+        assert!(result.is_ok());
+
+        let response = result.unwrap();
+        assert!(!response.token.is_empty());
+        assert!(response.expires_at > Utc::now().timestamp());
+    }
+
+    #[test]
+    fn test_token_contains_valid_claims() {
+        let secret = "test_secret_456";
+        let username = "admin";
+
+        let response = create_token(username, secret).unwrap();
+
+        // Decode the token to verify claims
+        let token_data = decode::<Claims>(
+            &response.token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::default(),
+        )
+        .unwrap();
+
+        assert_eq!(token_data.claims.sub, username);
+        assert!(token_data.claims.exp > token_data.claims.iat);
+    }
+
+    #[test]
+    fn test_hash_and_verify_password() {
+        let password = "secure_password_123";
+        let hash = hash_password(password).unwrap();
+
+        // Verify the password matches the hash
+        assert!(verify_password(password, &hash));
+
+        // Verify wrong password doesn't match
+        assert!(!verify_password("wrong_password", &hash));
+    }
+
+    #[test]
+    fn test_verify_password_with_invalid_hash() {
+        // Invalid hash format should return false, not panic
+        assert!(!verify_password("password", "invalid_hash"));
+        assert!(!verify_password("password", ""));
+    }
+
+    #[test]
+    fn test_auth_error_display() {
+        let error = AuthError("test error message".to_string());
+        assert_eq!(error.0, "test error message");
+    }
+}
