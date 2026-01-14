@@ -27,3 +27,4 @@ This project uses Claude Code native hooks for context management.
 6. Commit: `git add -A && git commit -m "completed <id>"`
 
 The context engine handles the rest automatically.
+Use 'bd' for task tracking

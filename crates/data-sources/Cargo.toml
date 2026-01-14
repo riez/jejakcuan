@@ -17,4 +17,9 @@ tracing.workspace = true
 scraper = "0.18"
 rust_decimal_macros = "1"
 
+# WebSocket support
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
+url = "2"
+
 jejakcuan-core = { path = "../core" }
