@@ -15,6 +15,7 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 pub mod config;
+pub mod notifications;
 pub mod routes;
 
 use config::Config;
