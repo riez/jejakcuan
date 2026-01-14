@@ -1,0 +1,17 @@
+[package]
+name = "jejakcuan-cache"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "json"] }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+jejakcuan-core = { path = "../core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
