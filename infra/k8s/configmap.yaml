@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jejakcuan-config
+  namespace: jejakcuan
+data:
+  RUST_LOG: "info,jejakcuan=debug"
+  DATABASE_MAX_CONNECTIONS: "20"
+  REDIS_MAX_CONNECTIONS: "10"
+  CACHE_TTL_SECONDS: "300"
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW_SECONDS: "60"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: jejakcuan
+data:
+  nginx.conf: |
+    upstream api {
+        server jejakcuan-api:3000;
+    }
+    
+    upstream web {
+        server jejakcuan-web:5173;
+    }
+    
+    server {
+        listen 80;
+        server_name _;
+        
+        location /api/ {
+            proxy_pass http://api/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+        
+        location /sse/ {
+            proxy_pass http://api/sse/;
+            proxy_http_version 1.1;
+            proxy_set_header Connection '';
+            proxy_buffering off;
+            proxy_cache off;
+        }
+        
+        location / {
+            proxy_pass http://web/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+        }
+    }

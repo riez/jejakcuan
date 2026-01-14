@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "apps/api",
+    "crates/audit",
     "crates/core",
     "crates/cache",
     "crates/data-sources",
@@ -50,3 +51,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Config
 dotenvy = "0.15"
+
+# Async traits
+async-trait = "0.1"

@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jejakcuan-ml
+  namespace: jejakcuan
+  labels:
+    app: jejakcuan-ml
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: jejakcuan-ml
+  template:
+    metadata:
+      labels:
+        app: jejakcuan-ml
+    spec:
+      containers:
+        - name: ml
+          image: jejakcuan/ml:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: jejakcuan-config
+            - secretRef:
+                name: jejakcuan-secrets
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jejakcuan-ml
+  namespace: jejakcuan
+spec:
+  selector:
+    app: jejakcuan-ml
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP
