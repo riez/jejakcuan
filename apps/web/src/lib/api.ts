@@ -64,6 +64,90 @@ interface FundamentalData {
   sector_avg_pb: number | null;
 }
 
+// Analysis Types
+interface BrokerInfo {
+  code: string;
+  avg_price: number;
+  category: string;
+}
+
+interface PriceRange {
+  low: number;
+  high: number;
+}
+
+interface BrokerSummaryResponse {
+  big_buyers: BrokerInfo[];
+  big_sellers: BrokerInfo[];
+  net_status: string;
+  price_range: PriceRange;
+  foreign_net: number;
+  domestic_net: number;
+}
+
+interface IchimokuInfo {
+  position: string;
+  cloud_range: PriceRange;
+}
+
+interface TASummary {
+  sell: number;
+  neutral: number;
+  buy: number;
+}
+
+interface BollingerResponse {
+  upper: number;
+  middle: number;
+  lower: number;
+}
+
+interface TechnicalResponse {
+  last_price: number;
+  rsi: number;
+  rsi_signal: string;
+  macd: number;
+  macd_signal: string;
+  macd_histogram: number;
+  bollinger: BollingerResponse;
+  ichimoku: IchimokuInfo;
+  support: number[];
+  resistance: number[];
+  summary: TASummary;
+}
+
+interface ValuationResponse {
+  per_value: number;
+  forward_eps: number;
+  pbv_value: number;
+  book_value: number;
+  ev_ebitda_value: number;
+  fair_price_range: PriceRange;
+  bull_case: PriceRange;
+}
+
+interface StrategyResponse {
+  traders: string;
+  investors: string;
+  value_investors: string;
+}
+
+interface ConclusionResponse {
+  strengths: string[];
+  weaknesses: string[];
+  strategy: StrategyResponse;
+}
+
+interface FullAnalysisResponse {
+  symbol: string;
+  name: string;
+  sector: string | null;
+  broker_summary: BrokerSummaryResponse | null;
+  technical: TechnicalResponse | null;
+  valuation: ValuationResponse | null;
+  conclusion: ConclusionResponse | null;
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -206,7 +290,62 @@ class ApiClient {
       throw error;
     }
   }
+
+  // Analysis
+  async getFullAnalysis(symbol: string, days?: number): Promise<FullAnalysisResponse | null> {
+    try {
+      const params = days ? `?days=${days}` : '';
+      return await this.fetch<FullAnalysisResponse>(`/api/analysis/${symbol}/analysis${params}`);
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getTechnicals(symbol: string, days?: number): Promise<TechnicalResponse | null> {
+    try {
+      const params = days ? `?days=${days}` : '';
+      return await this.fetch<TechnicalResponse>(`/api/analysis/${symbol}/technicals${params}`);
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getBrokerFlow(symbol: string, days?: number): Promise<BrokerSummaryResponse | null> {
+    try {
+      const params = days ? `?days=${days}` : '';
+      return await this.fetch<BrokerSummaryResponse>(`/api/analysis/${symbol}/broker-flow${params}`);
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
+        return null;
+      }
+      throw error;
+    }
+  }
 }
 
 export const api = new ApiClient();
-export type { Stock, StockScore, StockPrice, WatchlistItem, LoginResponse, FundamentalData };
+export type { 
+  Stock, 
+  StockScore, 
+  StockPrice, 
+  WatchlistItem, 
+  LoginResponse, 
+  FundamentalData,
+  FullAnalysisResponse,
+  TechnicalResponse,
+  BrokerSummaryResponse,
+  ValuationResponse,
+  ConclusionResponse,
+  BrokerInfo,
+  PriceRange,
+  IchimokuInfo,
+  TASummary,
+  BollingerResponse,
+  StrategyResponse
+};

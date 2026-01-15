@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import { ProgressRadial, TabGroup, Tab } from '@skeletonlabs/skeleton';
   import { SignalCard, SignalFilters, StockAnalysis } from '$lib/components';
+  import { api } from '$lib/api';
+  import type { Stock, StockScore, FullAnalysisResponse } from '$lib/api';
   import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion } from '$lib/components/StockAnalysis.types';
 
   interface Signal {
@@ -36,226 +38,251 @@
   let filteredSignals = $state<Signal[]>([]);
   let filters = $state<Filters>({ type: 'all', strength: 'all', minScore: 0, sector: '' });
   let isLoading = $state(true);
+  let loadingAnalysis = $state<string | null>(null);
   let sectors = $state<string[]>([]);
   let selectedSignal = $state<Signal | null>(null);
   let language = $state<'en' | 'id'>('id');
   let viewTab = $state(0); // 0 = list, 1 = analysis
+  let errorMessage = $state<string | null>(null);
 
   onMount(async () => {
     await loadSignals();
   });
 
+  // Convert API response to component types
+  function convertBrokerSummary(data: FullAnalysisResponse['broker_summary']): BrokerSummary | undefined {
+    if (!data || (data.big_buyers.length === 0 && data.big_sellers.length === 0)) return undefined;
+    return {
+      bigBuyers: data.big_buyers.map(b => ({ code: b.code, avgPrice: b.avg_price })),
+      bigSellers: data.big_sellers.map(b => ({ code: b.code, avgPrice: b.avg_price })),
+      netStatus: data.net_status as 'accumulation' | 'distribution' | 'balanced',
+      priceRange: { low: data.price_range.low, high: data.price_range.high }
+    };
+  }
+
+  function convertTechnical(data: FullAnalysisResponse['technical']): TechnicalAnalysis | undefined {
+    if (!data) return undefined;
+    return {
+      lastPrice: data.last_price,
+      rsi: data.rsi,
+      rsiSignal: data.rsi_signal as 'oversold' | 'neutral' | 'overbought',
+      macd: data.macd,
+      macdSignal: data.macd_signal.includes('bullish') ? 'positive' : 'negative',
+      ichimoku: {
+        position: data.ichimoku.position as 'above' | 'in' | 'below',
+        cloudRange: { low: data.ichimoku.cloud_range.low, high: data.ichimoku.cloud_range.high }
+      },
+      support: data.support,
+      resistance: data.resistance,
+      summary: data.summary
+    };
+  }
+
+  function convertValuation(data: FullAnalysisResponse['valuation']): ValuationEstimate | undefined {
+    if (!data) return undefined;
+    return {
+      perValue: data.per_value,
+      forwardEps: data.forward_eps,
+      pbvValue: data.pbv_value,
+      bookValue: data.book_value,
+      evEbitdaValue: data.ev_ebitda_value,
+      fairPriceRange: { low: data.fair_price_range.low, high: data.fair_price_range.high },
+      bullCase: { low: data.bull_case.low, high: data.bull_case.high }
+    };
+  }
+
+  function convertConclusion(data: FullAnalysisResponse['conclusion']): OverallConclusion | undefined {
+    if (!data) return undefined;
+    return {
+      strengths: data.strengths,
+      weaknesses: data.weaknesses,
+      strategy: {
+        traders: data.strategy.traders,
+        investors: data.strategy.investors,
+        valueInvestors: data.strategy.value_investors
+      }
+    };
+  }
+
+  function determineSignalType(score: number, technical: TechnicalAnalysis | undefined): 'buy' | 'sell' | 'hold' {
+    if (score >= 70) return 'buy';
+    if (score <= 40) return 'sell';
+    if (technical) {
+      const { summary } = technical;
+      if (summary.buy > summary.sell + 3) return 'buy';
+      if (summary.sell > summary.buy + 3) return 'sell';
+    }
+    return 'hold';
+  }
+
+  function determineStrength(score: number): 'strong' | 'moderate' | 'weak' {
+    if (score >= 80 || score <= 25) return 'strong';
+    if (score >= 65 || score <= 40) return 'moderate';
+    return 'weak';
+  }
+
+  function generateReason(technical: TechnicalAnalysis | undefined, signalType: 'buy' | 'sell' | 'hold'): string {
+    if (!technical) return 'Technical analysis data unavailable.';
+    
+    const reasons: string[] = [];
+    
+    // RSI
+    if (technical.rsi <= 30) {
+      reasons.push('RSI oversold bounce opportunity');
+    } else if (technical.rsi >= 70) {
+      reasons.push('RSI overbought warning');
+    }
+    
+    // MACD
+    if (technical.macdSignal === 'positive') {
+      reasons.push('MACD bullish momentum');
+    } else {
+      reasons.push('MACD bearish momentum');
+    }
+    
+    // Ichimoku
+    if (technical.ichimoku.position === 'above') {
+      reasons.push('Price above Ichimoku cloud');
+    } else if (technical.ichimoku.position === 'below') {
+      reasons.push('Price below Ichimoku cloud');
+    }
+    
+    // TA Summary
+    if (technical.summary.buy > technical.summary.sell) {
+      reasons.push(`${technical.summary.buy} buy signals vs ${technical.summary.sell} sell signals`);
+    } else if (technical.summary.sell > technical.summary.buy) {
+      reasons.push(`${technical.summary.sell} sell signals vs ${technical.summary.buy} buy signals`);
+    }
+    
+    return reasons.length > 0 ? reasons.join('. ') + '.' : 'Mixed signals, monitor closely.';
+  }
+
+  function generateIndicators(technical: TechnicalAnalysis | undefined): string[] {
+    if (!technical) return [];
+    
+    const indicators: string[] = [];
+    
+    if (technical.rsi <= 30) indicators.push('RSI Oversold');
+    else if (technical.rsi >= 70) indicators.push('RSI Overbought');
+    else indicators.push('RSI Neutral');
+    
+    if (technical.macdSignal === 'positive') indicators.push('MACD Bullish');
+    else indicators.push('MACD Bearish');
+    
+    if (technical.ichimoku.position === 'above') indicators.push('Ichimoku Bullish');
+    else if (technical.ichimoku.position === 'below') indicators.push('Ichimoku Bearish');
+    else indicators.push('Ichimoku Neutral');
+    
+    return indicators;
+  }
+
   async function loadSignals() {
     isLoading = true;
+    errorMessage = null;
     
-    // TODO: Replace with actual API call
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    signals = [
-      {
-        id: '1',
-        symbol: 'BBCA',
-        stockName: 'Bank Central Asia',
-        type: 'buy',
-        strength: 'strong',
-        score: 82,
-        reason: 'Strong accumulation pattern detected. Foreign net buy for 5 consecutive days. RSI oversold bounce.',
-        timestamp: new Date(),
-        priceAtSignal: 9250,
-        targetPrice: 10000,
-        stopLoss: 8800,
-        indicators: ['EMA Bullish', 'RSI Oversold', 'MACD Cross', 'Volume Surge'],
-        sector: 'Banking',
-        brokerSummary: {
-          bigBuyers: [{ code: 'BK', avgPrice: 9250 }, { code: 'KZ', avgPrice: 9200 }, { code: 'CS', avgPrice: 9180 }],
-          bigSellers: [{ code: 'CC', avgPrice: 9280 }, { code: 'YP', avgPrice: 9300 }],
-          netStatus: 'accumulation',
-          priceRange: { low: 9100, high: 9350 }
-        },
-        technical: {
-          lastPrice: 9250,
-          rsi: 42,
-          rsiSignal: 'neutral',
-          macd: 15,
-          macdSignal: 'positive',
-          ichimoku: { position: 'above', cloudRange: { low: 8800, high: 9100 } },
-          support: [9000, 8800, 8500],
-          resistance: [9500, 9800, 10000],
-          summary: { sell: 4, neutral: 8, buy: 14 }
-        },
-        valuation: {
-          perValue: 8500,
-          forwardEps: 14,
-          pbvValue: 7800,
-          bookValue: 2.8,
-          evEbitdaValue: 7200,
-          fairPriceRange: { low: 7200, high: 8500 },
-          bullCase: { low: 10000, high: 11000 }
-        },
-        conclusion: {
-          strengths: ['Strong net interest margin', 'Market leader position', 'Solid capital adequacy'],
-          weaknesses: ['Premium valuation', 'Interest rate sensitivity'],
-          strategy: {
-            traders: 'Monitor support 9000, entry on bounce with target 9800',
-            investors: 'Hold for long-term, strong fundamentals',
-            valueInvestors: 'Wait for correction to fair value range'
+    try {
+      // First, get top stocks with scores
+      const scores = await api.getTopScores(20);
+      
+      if (scores.length === 0) {
+        // Fallback: get some stocks without scores
+        const { stocks } = await api.getStocks(undefined, 10);
+        
+        // Create placeholder signals for stocks without scores
+        signals = stocks.map((stock, index) => ({
+          id: `${stock.symbol}-${index}`,
+          symbol: stock.symbol,
+          stockName: stock.name,
+          type: 'hold' as const,
+          strength: 'weak' as const,
+          score: 50,
+          reason: 'Awaiting analysis data. Click to load detailed analysis.',
+          timestamp: new Date(),
+          priceAtSignal: 0,
+          indicators: [],
+          sector: stock.sector || 'Unknown'
+        }));
+      } else {
+        // Create signals from scores
+        signals = await Promise.all(scores.slice(0, 15).map(async (score, index) => {
+          try {
+            const stock = await api.getStock(score.symbol);
+            const compositeScore = Math.round(score.composite_score);
+            
+            return {
+              id: `${score.symbol}-${index}`,
+              symbol: score.symbol,
+              stockName: stock.name,
+              type: determineSignalType(compositeScore, undefined),
+              strength: determineStrength(compositeScore),
+              score: compositeScore,
+              reason: `Composite score: ${compositeScore}. Technical: ${Math.round(score.technical_score)}, Fundamental: ${Math.round(score.fundamental_score)}. Click to view detailed analysis.`,
+              timestamp: new Date(score.time),
+              priceAtSignal: 0,
+              indicators: ['Technical Analysis', 'Fundamental Analysis', 'Sentiment Analysis'],
+              sector: stock.sector || 'Unknown'
+            } as Signal;
+          } catch (err) {
+            return {
+              id: `${score.symbol}-${index}`,
+              symbol: score.symbol,
+              stockName: score.symbol,
+              type: determineSignalType(Math.round(score.composite_score), undefined),
+              strength: determineStrength(Math.round(score.composite_score)),
+              score: Math.round(score.composite_score),
+              reason: `Score: ${Math.round(score.composite_score)}. Click to view analysis.`,
+              timestamp: new Date(score.time),
+              priceAtSignal: 0,
+              indicators: [],
+              sector: 'Unknown'
+            } as Signal;
           }
-        }
-      },
-      {
-        id: '2',
-        symbol: 'TLKM',
-        stockName: 'Telkom Indonesia',
-        type: 'buy',
-        strength: 'moderate',
-        score: 68,
-        reason: 'Breakout above resistance with increasing volume. Dividend yield attractive.',
-        timestamp: new Date(Date.now() - 3600000),
-        priceAtSignal: 4120,
-        targetPrice: 4500,
-        stopLoss: 3900,
-        indicators: ['Breakout', 'Volume Increase', 'Fib Support'],
-        sector: 'Telecoms',
-        brokerSummary: {
-          bigBuyers: [{ code: 'AK', avgPrice: 4100 }, { code: 'YU', avgPrice: 4080 }],
-          bigSellers: [{ code: 'CC', avgPrice: 4150 }, { code: 'BK', avgPrice: 4140 }],
-          netStatus: 'balanced',
-          priceRange: { low: 4000, high: 4200 }
-        },
-        technical: {
-          lastPrice: 4120,
-          rsi: 55,
-          rsiSignal: 'neutral',
-          macd: 8,
-          macdSignal: 'positive',
-          ichimoku: { position: 'in', cloudRange: { low: 3950, high: 4180 } },
-          support: [4000, 3850, 3700],
-          resistance: [4300, 4500, 4800],
-          summary: { sell: 6, neutral: 10, buy: 10 }
-        }
-      },
-      {
-        id: '3',
-        symbol: 'ADRO',
-        stockName: 'Adaro Energy',
-        type: 'sell',
-        strength: 'strong',
-        score: 75,
-        reason: 'Distribution pattern forming. Coal prices declining. Foreign selling accelerating.',
-        timestamp: new Date(Date.now() - 7200000),
-        priceAtSignal: 2450,
-        targetPrice: 2100,
-        stopLoss: 2600,
-        indicators: ['EMA Bearish', 'Volume Distribution', 'Sector Weak'],
-        sector: 'Mining',
-        brokerSummary: {
-          bigBuyers: [{ code: 'RX', avgPrice: 2420 }],
-          bigSellers: [{ code: 'BK', avgPrice: 2480 }, { code: 'KZ', avgPrice: 2470 }, { code: 'CS', avgPrice: 2460 }],
-          netStatus: 'distribution',
-          priceRange: { low: 2380, high: 2500 }
-        },
-        technical: {
-          lastPrice: 2450,
-          rsi: 38,
-          rsiSignal: 'neutral',
-          macd: -25,
-          macdSignal: 'negative',
-          ichimoku: { position: 'below', cloudRange: { low: 2550, high: 2700 } },
-          support: [2350, 2200, 2000],
-          resistance: [2550, 2700, 2900],
-          summary: { sell: 14, neutral: 6, buy: 6 }
-        },
-        conclusion: {
-          strengths: ['Strong cash flow', 'Low production costs'],
-          weaknesses: ['Coal price decline', 'ESG concerns', 'Foreign selling pressure'],
-          strategy: {
-            traders: 'Short opportunity, stop loss above 2600',
-            investors: 'Reduce exposure, sector headwinds',
-            valueInvestors: 'Avoid until commodity cycle turns'
-          }
-        }
-      },
-      {
-        id: '4',
-        symbol: 'ASII',
-        stockName: 'Astra International',
-        type: 'hold',
-        strength: 'weak',
-        score: 52,
-        reason: 'Consolidating near support. Wait for clearer direction before entry.',
-        timestamp: new Date(Date.now() - 10800000),
-        priceAtSignal: 5425,
-        indicators: ['Consolidation', 'Mixed Signals'],
-        sector: 'Industrial',
-        technical: {
-          lastPrice: 5425,
-          rsi: 48,
-          rsiSignal: 'neutral',
-          macd: -5,
-          macdSignal: 'negative',
-          ichimoku: { position: 'in', cloudRange: { low: 5300, high: 5600 } },
-          support: [5200, 5000, 4800],
-          resistance: [5600, 5800, 6000],
-          summary: { sell: 8, neutral: 12, buy: 6 }
-        }
-      },
-      {
-        id: '5',
-        symbol: 'BMRI',
-        stockName: 'Bank Mandiri',
-        type: 'buy',
-        strength: 'moderate',
-        score: 71,
-        reason: 'Strong quarterly earnings. Net interest margin expansion. Government infrastructure spending beneficiary.',
-        timestamp: new Date(Date.now() - 14400000),
-        priceAtSignal: 6450,
-        targetPrice: 7000,
-        stopLoss: 6100,
-        indicators: ['Earnings Beat', 'Fundamental Strong', 'Sector Leader'],
-        sector: 'Banking',
-        brokerSummary: {
-          bigBuyers: [{ code: 'BK', avgPrice: 6420 }, { code: 'AK', avgPrice: 6400 }, { code: 'YU', avgPrice: 6380 }],
-          bigSellers: [{ code: 'CC', avgPrice: 6480 }, { code: 'ZP', avgPrice: 6500 }],
-          netStatus: 'accumulation',
-          priceRange: { low: 6300, high: 6550 }
-        },
-        technical: {
-          lastPrice: 6450,
-          rsi: 58,
-          rsiSignal: 'neutral',
-          macd: 22,
-          macdSignal: 'positive',
-          ichimoku: { position: 'above', cloudRange: { low: 6100, high: 6350 } },
-          support: [6200, 6000, 5800],
-          resistance: [6700, 7000, 7300],
-          summary: { sell: 5, neutral: 9, buy: 12 }
-        },
-        valuation: {
-          perValue: 5800,
-          forwardEps: 12,
-          pbvValue: 5200,
-          bookValue: 2.2,
-          evEbitdaValue: 4800,
-          fairPriceRange: { low: 4800, high: 5800 },
-          bullCase: { low: 7000, high: 8000 }
-        },
-        conclusion: {
-          strengths: ['Earnings growth', 'Government backing', 'Infrastructure exposure'],
-          weaknesses: ['Economic sensitivity', 'NPL risk'],
-          strategy: {
-            traders: 'Buy on dips to 6200 support',
-            investors: 'Accumulate, solid long-term outlook',
-            valueInvestors: 'Consider at fair value levels'
-          }
-        }
-      },
-    ];
-    
-    // Extract unique sectors
-    sectors = [...new Set(signals.map(s => s.sector))].sort();
-    
-    applyFilters();
-    isLoading = false;
+        }));
+      }
+      
+      // Extract unique sectors
+      sectors = [...new Set(signals.map(s => s.sector).filter(s => s !== 'Unknown'))].sort();
+      
+      applyFilters();
+    } catch (err) {
+      console.error('Failed to load signals:', err);
+      errorMessage = err instanceof Error ? err.message : 'Failed to load signals';
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  async function loadAnalysisForSignal(signal: Signal): Promise<Signal> {
+    try {
+      loadingAnalysis = signal.symbol;
+      const analysis = await api.getFullAnalysis(signal.symbol);
+      
+      if (analysis) {
+        const technical = convertTechnical(analysis.technical);
+        const signalType = technical ? determineSignalType(signal.score, technical) : signal.type;
+        
+        return {
+          ...signal,
+          stockName: analysis.name || signal.stockName,
+          type: signalType,
+          priceAtSignal: analysis.technical?.last_price || 0,
+          reason: generateReason(technical, signalType),
+          indicators: generateIndicators(technical),
+          targetPrice: technical ? technical.resistance[0] : undefined,
+          stopLoss: technical ? technical.support[0] : undefined,
+          brokerSummary: convertBrokerSummary(analysis.broker_summary),
+          technical: technical,
+          valuation: convertValuation(analysis.valuation),
+          conclusion: convertConclusion(analysis.conclusion)
+        };
+      }
+      return signal;
+    } catch (err) {
+      console.error(`Failed to load analysis for ${signal.symbol}:`, err);
+      return signal;
+    } finally {
+      loadingAnalysis = null;
+    }
   }
 
   function applyFilters() {
@@ -268,8 +295,20 @@
     });
   }
 
-  function selectSignal(signal: Signal) {
-    selectedSignal = signal;
+  async function selectSignal(signal: Signal) {
+    // Load detailed analysis if not already loaded
+    if (!signal.technical) {
+      const updatedSignal = await loadAnalysisForSignal(signal);
+      // Update the signal in the list
+      const idx = signals.findIndex(s => s.id === signal.id);
+      if (idx >= 0) {
+        signals[idx] = updatedSignal;
+        signals = [...signals]; // Trigger reactivity
+      }
+      selectedSignal = updatedSignal;
+    } else {
+      selectedSignal = signal;
+    }
     viewTab = 1;
   }
 
@@ -324,6 +363,19 @@
       </button>
     </div>
   </div>
+
+  {#if errorMessage}
+    <div class="card variant-soft-error p-4">
+      <p class="text-rose-700 dark:text-rose-300">
+        <strong>Error:</strong> {errorMessage}
+      </p>
+      <p class="text-sm text-slate-600 dark:text-slate-400 mt-2">
+        {language === 'id' 
+          ? 'Pastikan API server berjalan dan Anda sudah login.'
+          : 'Make sure the API server is running and you are logged in.'}
+      </p>
+    </div>
+  {/if}
 
   <!-- Signal Stats -->
   <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -381,12 +433,17 @@
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {#each filteredSignals as signal (signal.id)}
           <div 
-            class="cursor-pointer transition-all hover:ring-2 hover:ring-primary-500/50 rounded-lg"
+            class="cursor-pointer transition-all hover:ring-2 hover:ring-primary-500/50 rounded-lg relative"
             onclick={() => selectSignal(signal)}
             onkeypress={(e) => e.key === 'Enter' && selectSignal(signal)}
             role="button"
             tabindex="0"
           >
+            {#if loadingAnalysis === signal.symbol}
+              <div class="absolute inset-0 bg-surface-900/30 rounded-lg flex items-center justify-center z-10">
+                <ProgressRadial width="w-8" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+              </div>
+            {/if}
             <SignalCard {signal} />
           </div>
         {/each}
@@ -407,7 +464,7 @@
             {selectedSignal.symbol} - {selectedSignal.stockName}
           </h2>
           <p class="text-slate-600 dark:text-slate-400">
-            {selectedSignal.sector} | {language === 'id' ? 'Harga' : 'Price'}: {selectedSignal.priceAtSignal.toLocaleString('id-ID')} IDR
+            {selectedSignal.sector} | {language === 'id' ? 'Harga' : 'Price'}: {selectedSignal.priceAtSignal > 0 ? selectedSignal.priceAtSignal.toLocaleString('id-ID') : 'N/A'} IDR
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -457,14 +514,25 @@
       </div>
 
       <!-- Comprehensive Analysis -->
-      <StockAnalysis 
-        symbol={selectedSignal.symbol}
-        brokerSummary={selectedSignal.brokerSummary}
-        technical={selectedSignal.technical}
-        valuation={selectedSignal.valuation}
-        conclusion={selectedSignal.conclusion}
-        {language}
-      />
+      {#if selectedSignal.technical || selectedSignal.brokerSummary || selectedSignal.valuation || selectedSignal.conclusion}
+        <StockAnalysis 
+          symbol={selectedSignal.symbol}
+          brokerSummary={selectedSignal.brokerSummary}
+          technical={selectedSignal.technical}
+          valuation={selectedSignal.valuation}
+          conclusion={selectedSignal.conclusion}
+          {language}
+        />
+      {:else}
+        <div class="card p-8 text-center">
+          <p class="text-slate-500 dark:text-slate-400">
+            {language === 'id' 
+              ? 'Memuat data analisis...'
+              : 'Loading analysis data...'}
+          </p>
+          <ProgressRadial width="w-8" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" class="mx-auto mt-4" />
+        </div>
+      {/if}
     </div>
   {/if}
 

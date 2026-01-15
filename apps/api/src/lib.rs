@@ -19,7 +19,7 @@ pub mod notifications;
 pub mod routes;
 
 use config::Config;
-use routes::{auth_routes, stock_routes, streaming_routes, watchlist_routes};
+use routes::{analysis_routes, auth_routes, stock_routes, streaming_routes, watchlist_routes};
 
 /// Application state shared across all handlers
 pub struct AppState {
@@ -36,6 +36,7 @@ pub fn create_app(db: PgPool, config: Config) -> Router {
         .route("/health", get(health))
         .nest("/api/auth", auth_routes())
         .nest("/api/stocks", stock_routes())
+        .nest("/api/analysis", analysis_routes())
         .nest("/api/watchlist", watchlist_routes())
         .nest("/api", streaming_routes())
         .layer(

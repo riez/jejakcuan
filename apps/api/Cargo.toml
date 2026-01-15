@@ -24,6 +24,8 @@ sqlx.workspace = true
 jejakcuan-core = { path = "../../crates/core" }
 jejakcuan-db = { path = "../../crates/db" }
 jejakcuan-data-sources = { path = "../../crates/data-sources" }
+jejakcuan-technical = { path = "../../crates/technical" }
+jejakcuan-fundamental = { path = "../../crates/fundamental" }
 
 # Additional
 axum-extra = { version = "0.9", features = ["cookie"] }
