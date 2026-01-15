@@ -13,6 +13,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+scrapers = [
+    "psycopg2-binary>=2.9.9",
+    "beautifulsoup4>=4.12.0",
+    "loguru>=0.7.2",
+    "lxml>=5.1.0",
+]
 ml = [
     "torch>=2.1.0",
     "transformers>=4.36.0",
@@ -25,7 +31,12 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
+    "types-psycopg2>=2.9.21",
+    "types-beautifulsoup4>=4.12.0",
 ]
+
+[project.scripts]
+jejakcuan-scrape = "jejakcuan_ml.scrapers.cli:main"
 
 [build-system]
 requires = ["hatchling"]

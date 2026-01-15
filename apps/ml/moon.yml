@@ -34,3 +34,23 @@ tasks:
     command: 'mypy src'
     inputs:
       - 'src/**/*'
+
+  scrape:
+    command: 'cd src && python -m jejakcuan_ml.scrapers.cli'
+    options:
+      persistent: false
+
+  scrape-all:
+    command: 'cd src && python -m jejakcuan_ml.scrapers.cli all --days 60'
+    options:
+      persistent: false
+
+  scrape-price:
+    command: 'cd src && python -m jejakcuan_ml.scrapers.cli price --days 365'
+    options:
+      persistent: false
+
+  scrape-broker:
+    command: 'cd src && python -m jejakcuan_ml.scrapers.cli broker --days 30'
+    options:
+      persistent: false
