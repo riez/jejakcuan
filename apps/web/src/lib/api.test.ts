@@ -13,6 +13,30 @@ const localStorageMock = {
 };
 Object.defineProperty(global, 'localStorage', { value: localStorageMock });
 
+// Helper to create mock response
+function createMockResponse(options: {
+  ok?: boolean;
+  status?: number;
+  body?: unknown;
+  contentLength?: string | null;
+}) {
+  const { ok = true, status = 200, body, contentLength } = options;
+  const bodyText = body !== undefined ? JSON.stringify(body) : '';
+  
+  return {
+    ok,
+    status,
+    headers: {
+      get: (name: string) => {
+        if (name === 'content-length') return contentLength ?? String(bodyText.length);
+        return null;
+      }
+    },
+    text: async () => bodyText,
+    json: async () => body,
+  };
+}
+
 describe('API Client', () => {
   beforeEach(() => {
     mockFetch.mockReset();
@@ -24,15 +48,34 @@ describe('API Client', () => {
 
   describe('fetch handling', () => {
     it('handles successful response', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: 'test' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ body: { data: 'test' } }));
 
       const stocks = await api.getStocks();
       
       expect(mockFetch).toHaveBeenCalled();
       expect(stocks).toEqual({ data: 'test' });
+    });
+
+    it('handles 204 No Content response', async () => {
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        status: 204,
+        contentLength: '0',
+      }));
+
+      // removeFromWatchlist returns void, should not throw
+      await expect(api.removeFromWatchlist('BBCA')).resolves.not.toThrow();
+    });
+
+    it('handles empty response body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        text: async () => '',
+      });
+
+      // Should not throw on empty response
+      await expect(api.removeFromWatchlist('BBCA')).resolves.not.toThrow();
     });
 
     it('handles error response', async () => {
@@ -61,10 +104,9 @@ describe('API Client', () => {
 
   describe('authentication', () => {
     it('stores token on successful login', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ token: 'new-token', expires_at: 12345 }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: { token: 'new-token', expires_at: 12345 },
+      }));
 
       await api.login('user', 'pass');
       
@@ -74,9 +116,23 @@ describe('API Client', () => {
     it('clears token on logout', async () => {
       api.setToken('test-token');
       
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: { success: true },
+      }));
+
+      await api.logout();
+      
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('token');
+    });
+
+    it('clears token on logout even if API returns empty response', async () => {
+      api.setToken('test-token');
+      
       mockFetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ({}),
+        status: 200,
+        headers: { get: () => null },
+        text: async () => '',
       });
 
       await api.logout();
@@ -95,10 +151,7 @@ describe('API Client', () => {
     it('includes authorization header when token is set', async () => {
       api.setToken('test-token');
       
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ stocks: [] }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ body: { stocks: [] } }));
 
       await api.getStocks();
       
@@ -115,10 +168,7 @@ describe('API Client', () => {
 
   describe('stocks API', () => {
     it('fetches stocks with optional filters', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ stocks: [], count: 0 }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ body: { stocks: [], count: 0 } }));
 
       await api.getStocks('banking', 10);
       
@@ -129,10 +179,9 @@ describe('API Client', () => {
     });
 
     it('fetches single stock', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ symbol: 'BBCA', name: 'Bank Central Asia' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: { symbol: 'BBCA', name: 'Bank Central Asia' },
+      }));
 
       const stock = await api.getStock('BBCA');
       
@@ -144,10 +193,7 @@ describe('API Client', () => {
     });
 
     it('fetches stock prices', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ close: 9000 }],
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ body: [{ close: 9000 }] }));
 
       await api.getStockPrices('BBCA', 30);
       
@@ -158,10 +204,9 @@ describe('API Client', () => {
     });
 
     it('fetches top scores', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ symbol: 'BBCA', composite_score: 85 }],
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: [{ symbol: 'BBCA', composite_score: 85 }],
+      }));
 
       const scores = await api.getTopScores(5);
       
@@ -175,10 +220,9 @@ describe('API Client', () => {
 
   describe('watchlist API', () => {
     it('adds stock to watchlist', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 1, symbol: 'BBCA' }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: { id: 1, symbol: 'BBCA' },
+      }));
 
       await api.addToWatchlist('BBCA');
       
@@ -192,10 +236,7 @@ describe('API Client', () => {
     });
 
     it('removes stock from watchlist', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({ body: {} }));
 
       await api.removeFromWatchlist('BBCA');
       
@@ -208,10 +249,9 @@ describe('API Client', () => {
 
   describe('fundamentals API', () => {
     it('fetches fundamentals data', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ symbol: 'BBCA', pe_ratio: 15.5 }),
-      });
+      mockFetch.mockResolvedValueOnce(createMockResponse({
+        body: { symbol: 'BBCA', pe_ratio: 15.5 },
+      }));
 
       const data = await api.getFundamentals('BBCA');
       

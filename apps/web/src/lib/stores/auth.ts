@@ -35,7 +35,11 @@ function createAuthStore() {
     },
 
     async logout() {
-      await api.logout();
+      try {
+        await api.logout();
+      } catch {
+        // Even if API fails, clear local auth state
+      }
       set({ isAuthenticated: false, isLoading: false, error: null });
     },
 

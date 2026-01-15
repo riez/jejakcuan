@@ -55,6 +55,14 @@ async fn login(
     Ok((jar.add(cookie), Json(response)))
 }
 
-async fn logout(jar: CookieJar) -> CookieJar {
-    jar.remove(Cookie::from("token"))
+#[derive(serde::Serialize)]
+struct LogoutResponse {
+    success: bool,
+}
+
+async fn logout(jar: CookieJar) -> (CookieJar, Json<LogoutResponse>) {
+    (
+        jar.remove(Cookie::from("token")),
+        Json(LogoutResponse { success: true }),
+    )
 }
