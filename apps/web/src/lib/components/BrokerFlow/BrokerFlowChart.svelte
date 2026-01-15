@@ -11,19 +11,17 @@
 		sellLot: number;
 	}
 	
-	export let data: BrokerData[] = [];
-	export let title = 'Broker Flow';
-	export let showTop = 10;
+	let { data = [] as BrokerData[], title = 'Broker Flow', showTop = 10 } = $props();
 	
-	$: topBuyers = [...data]
+	let topBuyers = $derived([...data]
 		.filter(b => b.netValue > 0)
 		.sort((a, b) => b.netValue - a.netValue)
-		.slice(0, showTop);
+		.slice(0, showTop));
 	
-	$: topSellers = [...data]
+	let topSellers = $derived([...data]
 		.filter(b => b.netValue < 0)
 		.sort((a, b) => a.netValue - b.netValue)
-		.slice(0, showTop);
+		.slice(0, showTop));
 	
 	function formatValue(value: number): string {
 		const abs = Math.abs(value);
@@ -37,131 +35,58 @@
 		return (Math.abs(value) / max) * 100;
 	}
 	
-	$: maxBuy = Math.max(...topBuyers.map(b => b.netValue), 1);
-	$: maxSell = Math.max(...topSellers.map(b => Math.abs(b.netValue)), 1);
+	let maxBuy = $derived(Math.max(...topBuyers.map(b => b.netValue), 1));
+	let maxSell = $derived(Math.max(...topSellers.map(b => Math.abs(b.netValue)), 1));
 </script>
 
-<div class="broker-flow">
-	<h3>{title}</h3>
+<div class="card p-4">
+	<h3 class="h4 mb-4">{title}</h3>
 	
-	<div class="flow-grid">
-		<div class="buyers">
-			<h4>Top Buyers</h4>
-			{#each topBuyers as broker}
-				<div class="broker-row">
-					<span class="code" title={broker.name}>{broker.code}</span>
-					<div class="bar-container">
-						<div 
-							class="bar buy" 
-							style="width: {getBarWidth(broker.netValue, maxBuy)}%"
-						></div>
-					</div>
-					<span class="value">{formatValue(broker.netValue)}</span>
+	<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+		<!-- Top Buyers -->
+		<div>
+			<h4 class="text-sm text-surface-500 mb-3">Top Buyers</h4>
+			{#if topBuyers.length > 0}
+				<div class="space-y-2">
+					{#each topBuyers as broker}
+						<div class="flex items-center gap-2 text-sm">
+							<span class="w-8 font-bold text-surface-900 dark:text-white" title={broker.name}>{broker.code}</span>
+							<div class="flex-1 h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
+								<div 
+									class="h-full bg-gradient-to-r from-green-500 to-green-400 rounded-full"
+									style="width: {getBarWidth(broker.netValue, maxBuy)}%"
+								></div>
+							</div>
+							<span class="w-16 text-right text-surface-600-300-token">{formatValue(broker.netValue)}</span>
+						</div>
+					{/each}
 				</div>
-			{/each}
-			{#if topBuyers.length === 0}
-				<p class="empty">No net buyers</p>
+			{:else}
+				<p class="text-surface-500 text-sm italic">No net buyers</p>
 			{/if}
 		</div>
 		
-		<div class="sellers">
-			<h4>Top Sellers</h4>
-			{#each topSellers as broker}
-				<div class="broker-row">
-					<span class="code" title={broker.name}>{broker.code}</span>
-					<div class="bar-container">
-						<div 
-							class="bar sell" 
-							style="width: {getBarWidth(broker.netValue, maxSell)}%"
-						></div>
-					</div>
-					<span class="value">{formatValue(broker.netValue)}</span>
+		<!-- Top Sellers -->
+		<div>
+			<h4 class="text-sm text-surface-500 mb-3">Top Sellers</h4>
+			{#if topSellers.length > 0}
+				<div class="space-y-2">
+					{#each topSellers as broker}
+						<div class="flex items-center gap-2 text-sm">
+							<span class="w-8 font-bold text-surface-900 dark:text-white" title={broker.name}>{broker.code}</span>
+							<div class="flex-1 h-2 bg-surface-200 dark:bg-surface-700 rounded-full overflow-hidden">
+								<div 
+									class="h-full bg-gradient-to-r from-red-500 to-red-400 rounded-full"
+									style="width: {getBarWidth(broker.netValue, maxSell)}%"
+								></div>
+							</div>
+							<span class="w-16 text-right text-surface-600-300-token">{formatValue(broker.netValue)}</span>
+						</div>
+					{/each}
 				</div>
-			{/each}
-			{#if topSellers.length === 0}
-				<p class="empty">No net sellers</p>
+			{:else}
+				<p class="text-surface-500 text-sm italic">No net sellers</p>
 			{/if}
 		</div>
 	</div>
 </div>
-
-<style>
-	.broker-flow {
-		background: var(--card-bg, #1a1a2e);
-		border-radius: 8px;
-		padding: 1rem;
-	}
-	
-	h3 {
-		margin: 0 0 1rem;
-		font-size: 1.1rem;
-		color: var(--text-primary, #fff);
-	}
-	
-	h4 {
-		margin: 0 0 0.5rem;
-		font-size: 0.9rem;
-		color: var(--text-secondary, #aaa);
-	}
-	
-	.flow-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1.5rem;
-	}
-	
-	.broker-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-		font-size: 0.85rem;
-	}
-	
-	.code {
-		width: 30px;
-		font-weight: 600;
-		color: var(--text-primary, #fff);
-	}
-	
-	.bar-container {
-		flex: 1;
-		height: 8px;
-		background: var(--bg-secondary, #2a2a4e);
-		border-radius: 4px;
-		overflow: hidden;
-	}
-	
-	.bar {
-		height: 100%;
-		border-radius: 4px;
-		transition: width 0.3s ease;
-	}
-	
-	.bar.buy {
-		background: linear-gradient(90deg, #10b981, #34d399);
-	}
-	
-	.bar.sell {
-		background: linear-gradient(90deg, #ef4444, #f87171);
-	}
-	
-	.value {
-		width: 60px;
-		text-align: right;
-		font-size: 0.8rem;
-		color: var(--text-secondary, #aaa);
-	}
-	
-	.empty {
-		color: var(--text-muted, #666);
-		font-size: 0.85rem;
-		font-style: italic;
-	}
-	
-	@media (max-width: 600px) {
-		.flow-grid {
-			grid-template-columns: 1fr;
-		}
-	}
-</style>

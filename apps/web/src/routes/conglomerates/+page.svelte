@@ -59,7 +59,7 @@
 		},
 	];
 	
-	let selectedConglomerate: Conglomerate | null = null;
+	let selectedConglomerate = $state<Conglomerate | null>(null);
 	
 	function formatMarketCap(value: number): string {
 		if (value >= 1e15) return `Rp${(value / 1e15).toFixed(1)}K T`;
@@ -67,10 +67,16 @@
 		return `Rp${(value / 1e9).toFixed(0)} B`;
 	}
 	
-	function getScoreColor(score: number): string {
-		if (score >= 70) return '#10b981';
-		if (score >= 50) return '#f59e0b';
-		return '#ef4444';
+	function getScoreClass(score: number): string {
+		if (score >= 70) return 'text-green-500';
+		if (score >= 50) return 'text-yellow-500';
+		return 'text-red-500';
+	}
+	
+	function getScoreBadgeClass(score: number): string {
+		if (score >= 70) return 'variant-filled-success';
+		if (score >= 50) return 'variant-filled-warning';
+		return 'variant-filled-error';
 	}
 </script>
 
@@ -78,27 +84,27 @@
 	<title>Conglomerate Tracking | JejakCuan</title>
 </svelte:head>
 
-<div class="page">
+<div class="space-y-6">
 	<header>
-		<h1>Conglomerate Tracking</h1>
-		<p class="subtitle">Monitor Indonesian business groups and their holdings</p>
+		<h1 class="h1">Conglomerate Tracking</h1>
+		<p class="text-surface-600-300-token">Monitor Indonesian business groups and their holdings</p>
 	</header>
 	
-	<div class="grid">
-		<div class="conglomerate-list">
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+		<!-- Conglomerate List -->
+		<div class="lg:col-span-1 space-y-3">
 			{#each conglomerates as cong}
 				<button 
-					class="cong-card" 
-					class:selected={selectedConglomerate?.id === cong.id}
-					on:click={() => selectedConglomerate = cong}
+					class="card p-4 w-full text-left hover:ring-2 ring-primary-500 transition-all {selectedConglomerate?.id === cong.id ? 'ring-2 ring-primary-500 variant-soft-primary' : ''}"
+					onclick={() => selectedConglomerate = cong}
 				>
-					<div class="cong-header">
-						<h3>{cong.name}</h3>
-						<span class="score" style="color: {getScoreColor(cong.avgScore)}">
+					<div class="flex items-center justify-between mb-2">
+						<h3 class="h4">{cong.name}</h3>
+						<span class="text-2xl font-bold {getScoreClass(cong.avgScore)}">
 							{cong.avgScore}
 						</span>
 					</div>
-					<div class="cong-meta">
+					<div class="flex gap-4 text-sm text-surface-500">
 						<span>{cong.stocks.length} stocks</span>
 						<span>{formatMarketCap(cong.totalMarketCap)}</span>
 					</div>
@@ -106,243 +112,55 @@
 			{/each}
 		</div>
 		
-		<div class="detail-panel">
-			{#if selectedConglomerate}
-				<h2>{selectedConglomerate.name}</h2>
-				
-				<div class="holdings">
-					<h4>Holdings</h4>
-					<div class="holdings-list">
-						{#each selectedConglomerate.stocks as stock}
-							<a href="/stock/{stock.symbol}" class="holding-item">
-								<div class="holding-main">
-									<span class="symbol">{stock.symbol}</span>
-									<span class="name">{stock.name}</span>
-								</div>
-								<div class="holding-meta">
-									<span class="sector">{stock.sector}</span>
-									<span class="weight">{stock.weight}%</span>
-								</div>
-								<div class="weight-bar">
-									<div class="fill" style="width: {stock.weight}%"></div>
-								</div>
-							</a>
-						{/each}
+		<!-- Detail Panel -->
+		<div class="lg:col-span-2">
+			<div class="card p-6 min-h-[500px]">
+				{#if selectedConglomerate}
+					<h2 class="h2 mb-6">{selectedConglomerate.name}</h2>
+					
+					<!-- Holdings -->
+					<div class="mb-6">
+						<h4 class="text-sm uppercase text-surface-500 mb-3">Holdings</h4>
+						<div class="space-y-3">
+							{#each selectedConglomerate.stocks as stock}
+								<a href="/stock/{stock.symbol}" class="card variant-soft p-4 block hover:ring-2 ring-primary-500 transition-all">
+									<div class="flex items-center justify-between mb-2">
+										<div>
+											<span class="font-bold text-lg">{stock.symbol}</span>
+											<span class="text-surface-600-300-token ml-2">{stock.name}</span>
+										</div>
+										<span class="badge variant-soft-primary">{stock.weight}%</span>
+									</div>
+									<div class="flex items-center justify-between text-sm">
+										<span class="text-surface-500">{stock.sector}</span>
+										<div class="w-32 h-2 bg-surface-300 dark:bg-surface-700 rounded-full overflow-hidden">
+											<div class="h-full bg-primary-500 rounded-full" style="width: {stock.weight}%"></div>
+										</div>
+									</div>
+								</a>
+							{/each}
+						</div>
 					</div>
-				</div>
-				
-				<div class="stats">
-					<div class="stat">
-						<span class="label">Total Market Cap</span>
-						<span class="value">{formatMarketCap(selectedConglomerate.totalMarketCap)}</span>
+					
+					<!-- Stats -->
+					<div class="grid grid-cols-2 gap-4">
+						<div class="card variant-soft p-4 text-center">
+							<p class="text-sm text-surface-500 mb-1">Total Market Cap</p>
+							<p class="text-xl font-bold">{formatMarketCap(selectedConglomerate.totalMarketCap)}</p>
+						</div>
+						<div class="card variant-soft p-4 text-center">
+							<p class="text-sm text-surface-500 mb-1">Avg Score</p>
+							<p class="text-xl font-bold {getScoreClass(selectedConglomerate.avgScore)}">
+								{selectedConglomerate.avgScore}
+							</p>
+						</div>
 					</div>
-					<div class="stat">
-						<span class="label">Avg Score</span>
-						<span class="value" style="color: {getScoreColor(selectedConglomerate.avgScore)}">
-							{selectedConglomerate.avgScore}
-						</span>
+				{:else}
+					<div class="flex items-center justify-center h-full text-surface-500">
+						<p>Select a conglomerate to view details</p>
 					</div>
-				</div>
-			{:else}
-				<div class="placeholder">
-					<p>Select a conglomerate to view details</p>
-				</div>
-			{/if}
+				{/if}
+			</div>
 		</div>
 	</div>
 </div>
-
-<style>
-	.page {
-		max-width: 1200px;
-		margin: 0 auto;
-		padding: 2rem;
-	}
-	
-	header {
-		margin-bottom: 2rem;
-	}
-	
-	h1 {
-		margin: 0;
-		font-size: 2rem;
-		color: #fff;
-	}
-	
-	.subtitle {
-		color: #9ca3af;
-		margin: 0.5rem 0 0;
-	}
-	
-	.grid {
-		display: grid;
-		grid-template-columns: 350px 1fr;
-		gap: 1.5rem;
-	}
-	
-	.conglomerate-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-	
-	.cong-card {
-		background: #1a1a2e;
-		border: 2px solid transparent;
-		border-radius: 12px;
-		padding: 1rem;
-		cursor: pointer;
-		transition: all 0.2s;
-		text-align: left;
-	}
-	
-	.cong-card:hover {
-		border-color: #4338ca;
-	}
-	
-	.cong-card.selected {
-		border-color: #6366f1;
-		background: #252543;
-	}
-	
-	.cong-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-	}
-	
-	.cong-header h3 {
-		margin: 0;
-		font-size: 1rem;
-		color: #fff;
-	}
-	
-	.score {
-		font-size: 1.5rem;
-		font-weight: 700;
-	}
-	
-	.cong-meta {
-		display: flex;
-		gap: 1rem;
-		margin-top: 0.5rem;
-		font-size: 0.8rem;
-		color: #9ca3af;
-	}
-	
-	.detail-panel {
-		background: #1a1a2e;
-		border-radius: 12px;
-		padding: 1.5rem;
-		min-height: 400px;
-	}
-	
-	.detail-panel h2 {
-		margin: 0 0 1.5rem;
-		color: #fff;
-	}
-	
-	.detail-panel h4 {
-		margin: 0 0 1rem;
-		color: #9ca3af;
-		font-size: 0.9rem;
-	}
-	
-	.holding-item {
-		display: block;
-		background: #252543;
-		border-radius: 8px;
-		padding: 1rem;
-		margin-bottom: 0.75rem;
-		text-decoration: none;
-		transition: background 0.2s;
-	}
-	
-	.holding-item:hover {
-		background: #2d2d5a;
-	}
-	
-	.holding-main {
-		display: flex;
-		gap: 1rem;
-		margin-bottom: 0.5rem;
-	}
-	
-	.holding-main .symbol {
-		font-weight: 700;
-		color: #fff;
-	}
-	
-	.holding-main .name {
-		color: #d1d5db;
-	}
-	
-	.holding-meta {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.8rem;
-		margin-bottom: 0.5rem;
-	}
-	
-	.sector {
-		color: #6b7280;
-	}
-	
-	.weight {
-		color: #6366f1;
-		font-weight: 600;
-	}
-	
-	.weight-bar {
-		height: 4px;
-		background: #374151;
-		border-radius: 2px;
-	}
-	
-	.weight-bar .fill {
-		height: 100%;
-		background: #6366f1;
-		border-radius: 2px;
-	}
-	
-	.stats {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		margin-top: 1.5rem;
-	}
-	
-	.stat {
-		background: #252543;
-		padding: 1rem;
-		border-radius: 8px;
-		text-align: center;
-	}
-	
-	.stat .label {
-		display: block;
-		font-size: 0.75rem;
-		color: #9ca3af;
-		margin-bottom: 0.25rem;
-	}
-	
-	.stat .value {
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: #fff;
-	}
-	
-	.placeholder {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: #6b7280;
-	}
-	
-	@media (max-width: 800px) {
-		.grid {
-			grid-template-columns: 1fr;
-		}
-	}
-</style>

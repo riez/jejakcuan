@@ -6,16 +6,15 @@
 		netRetail: number;
 	}
 	
-	export let data: FlowData[] = [];
-	export let symbol = '';
+	let { data = [] as FlowData[], symbol = '' } = $props();
 	
-	$: totalForeign = data.reduce((sum, d) => sum + d.netForeign, 0);
-	$: totalInstitutional = data.reduce((sum, d) => sum + d.netInstitutional, 0);
-	$: cumulativeForeign = data.reduce((acc, d) => {
+	let totalForeign = $derived(data.reduce((sum, d) => sum + d.netForeign, 0));
+	let totalInstitutional = $derived(data.reduce((sum, d) => sum + d.netInstitutional, 0));
+	let cumulativeForeign = $derived(data.reduce((acc, d) => {
 		const last = acc.length > 0 ? acc[acc.length - 1] : 0;
 		acc.push(last + d.netForeign);
 		return acc;
-	}, [] as number[]);
+	}, [] as number[]));
 	
 	function formatValue(value: number): string {
 		const abs = Math.abs(value);
@@ -25,132 +24,56 @@
 		return value.toLocaleString();
 	}
 	
-	function getClass(value: number): string {
-		if (value > 0) return 'positive';
-		if (value < 0) return 'negative';
-		return 'neutral';
+	function getValueClass(value: number): string {
+		if (value > 0) return 'text-green-500';
+		if (value < 0) return 'text-red-500';
+		return 'text-surface-500';
 	}
 </script>
 
-<div class="foreign-flow">
-	<div class="header">
-		<h3>Foreign & Institutional Flow</h3>
+<div class="card variant-soft p-4">
+	<div class="flex items-center justify-between mb-4">
+		<h3 class="h4">Foreign & Institutional Flow</h3>
 		{#if symbol}
-			<span class="symbol">{symbol}</span>
+			<span class="badge variant-filled-primary">{symbol}</span>
 		{/if}
 	</div>
 	
-	<div class="summary">
-		<div class="metric {getClass(totalForeign)}">
-			<span class="label">Net Foreign</span>
-			<span class="value">{formatValue(totalForeign)}</span>
+	<div class="grid grid-cols-2 gap-4 mb-4">
+		<div class="card p-4 text-center">
+			<p class="text-xs text-surface-500 mb-1">Net Foreign</p>
+			<p class="text-xl font-bold {getValueClass(totalForeign)}">{formatValue(totalForeign)}</p>
 		</div>
-		<div class="metric {getClass(totalInstitutional)}">
-			<span class="label">Net Institutional</span>
-			<span class="value">{formatValue(totalInstitutional)}</span>
+		<div class="card p-4 text-center">
+			<p class="text-xs text-surface-500 mb-1">Net Institutional</p>
+			<p class="text-xl font-bold {getValueClass(totalInstitutional)}">{formatValue(totalInstitutional)}</p>
 		</div>
 	</div>
 	
-	<div class="chart-placeholder">
-		<svg viewBox="0 0 400 100" class="flow-chart">
+	<!-- Simple SVG Chart -->
+	<div class="h-24 mb-2">
+		<svg viewBox="0 0 400 100" class="w-full h-full">
 			{#if data.length > 0}
-				<line x1="0" y1="50" x2="400" y2="50" stroke="#333" stroke-dasharray="4"/>
+				<line x1="0" y1="50" x2="400" y2="50" stroke="currentColor" stroke-dasharray="4" class="text-surface-300 dark:text-surface-700"/>
 				<polyline
 					fill="none"
 					stroke={totalForeign >= 0 ? '#10b981' : '#ef4444'}
 					stroke-width="2"
 					points={cumulativeForeign.map((v, i) => {
-						const x = (i / (data.length - 1)) * 400;
+						const x = data.length > 1 ? (i / (data.length - 1)) * 400 : 200;
 						const max = Math.max(...cumulativeForeign.map(Math.abs)) || 1;
 						const y = 50 - (v / max) * 40;
 						return `${x},${y}`;
 					}).join(' ')}
 				/>
 			{:else}
-				<text x="200" y="50" text-anchor="middle" fill="#666">No data</text>
+				<text x="200" y="50" text-anchor="middle" class="fill-surface-500 text-sm">No data</text>
 			{/if}
 		</svg>
 	</div>
 	
-	<div class="legend">
-		<span class="legend-item positive">● Inflow</span>
-		<span class="legend-item negative">● Outflow</span>
+	<div class="flex justify-center gap-4 text-xs">
+		<span class="text-green-500">● Inflow</span>
+		<span class="text-red-500">● Outflow</span>
 	</div>
 </div>
-
-<style>
-	.foreign-flow {
-		background: var(--card-bg, #1a1a2e);
-		border-radius: 8px;
-		padding: 1rem;
-	}
-	
-	.header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-	}
-	
-	h3 {
-		margin: 0;
-		font-size: 1.1rem;
-		color: var(--text-primary, #fff);
-	}
-	
-	.symbol {
-		font-weight: 700;
-		color: var(--accent, #6366f1);
-	}
-	
-	.summary {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-	
-	.metric {
-		padding: 0.75rem;
-		background: var(--bg-secondary, #2a2a4e);
-		border-radius: 6px;
-		text-align: center;
-	}
-	
-	.metric .label {
-		display: block;
-		font-size: 0.75rem;
-		color: var(--text-secondary, #aaa);
-		margin-bottom: 0.25rem;
-	}
-	
-	.metric .value {
-		display: block;
-		font-size: 1.25rem;
-		font-weight: 700;
-	}
-	
-	.metric.positive .value { color: #10b981; }
-	.metric.negative .value { color: #ef4444; }
-	.metric.neutral .value { color: #6b7280; }
-	
-	.chart-placeholder {
-		height: 100px;
-		margin-bottom: 0.5rem;
-	}
-	
-	.flow-chart {
-		width: 100%;
-		height: 100%;
-	}
-	
-	.legend {
-		display: flex;
-		justify-content: center;
-		gap: 1rem;
-		font-size: 0.75rem;
-	}
-	
-	.legend-item.positive { color: #10b981; }
-	.legend-item.negative { color: #ef4444; }
-</style>
