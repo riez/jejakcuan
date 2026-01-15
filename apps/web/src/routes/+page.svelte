@@ -79,11 +79,13 @@
       stock.sentiment_score?.toFixed(0) ?? '-',
       stock.ml_score?.toFixed(0) ?? '-'
     ]),
-    meta: stocksWithScores().map((stock) => [stock.symbol])
+    meta: stocksWithScores().map((stock) => stock.symbol)
   });
 
   function handleTableSelect(e: CustomEvent<string[]>) {
-    const symbol = e.detail[0];
+    const meta = e.detail;
+    // meta is the row's meta value (stock.symbol string)
+    const symbol = Array.isArray(meta) ? meta[0] : meta;
     if (symbol) {
       goto(`/stock/${symbol}`);
     }

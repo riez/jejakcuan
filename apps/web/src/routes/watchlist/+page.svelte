@@ -99,11 +99,12 @@
         : '-',
       item.score?.composite_score.toFixed(0) ?? '-'
     ]),
-    meta: watchlist.map((item) => [item.symbol])
+    meta: watchlist.map((item) => item.symbol)
   });
 
   function handleTableSelect(e: CustomEvent<string[]>) {
-    const symbol = e.detail[0];
+    const meta = e.detail;
+    const symbol = Array.isArray(meta) ? meta[0] : meta;
     if (symbol) {
       goto(`/stock/${symbol}`);
     }
