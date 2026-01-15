@@ -79,7 +79,7 @@
       stock.sentiment_score?.toFixed(0) ?? '-',
       stock.ml_score?.toFixed(0) ?? '-'
     ]),
-    meta: stocksWithScores().map((stock) => stock.symbol)
+    meta: stocksWithScores().map((stock) => [stock.symbol])
   });
 
   function handleTableSelect(e: CustomEvent<string[]>) {

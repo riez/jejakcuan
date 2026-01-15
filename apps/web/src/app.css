@@ -19,30 +19,39 @@
 
 /* Component layer customizations */
 @layer components {
-  /* Financial data specific styles */
+  /* Financial data specific styles - WCAG AA compliant */
   .price-up {
-    @apply text-success-500;
+    @apply text-green-600 dark:text-green-400 font-semibold;
   }
   
   .price-down {
-    @apply text-error-500;
+    @apply text-red-600 dark:text-red-400 font-semibold;
   }
   
   .price-neutral {
-    @apply text-surface-400;
+    @apply text-slate-600 dark:text-slate-300;
   }
   
-  /* Score badges */
+  /* High contrast price indicators for dark mode visibility */
+  .price-indicator-up {
+    @apply text-emerald-500 dark:text-emerald-400 font-bold;
+  }
+  
+  .price-indicator-down {
+    @apply text-rose-500 dark:text-rose-400 font-bold;
+  }
+  
+  /* Score badges - improved contrast */
   .score-high {
-    @apply bg-success-500/20 text-success-700 dark:text-success-400;
+    @apply bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 font-medium;
   }
   
   .score-medium {
-    @apply bg-warning-500/20 text-warning-700 dark:text-warning-400;
+    @apply bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 font-medium;
   }
   
   .score-low {
-    @apply bg-error-500/20 text-error-700 dark:text-error-400;
+    @apply bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 font-medium;
   }
   
   /* Card hover effect for interactive cards */
@@ -56,10 +65,45 @@
   }
   
   .data-grid dt {
-    @apply text-surface-500 dark:text-surface-400;
+    @apply text-slate-600 dark:text-slate-300;
   }
   
   .data-grid dd {
-    @apply font-medium font-tabular;
+    @apply font-medium font-tabular text-slate-900 dark:text-slate-100;
+  }
+  
+  /* High contrast anchor/link styles */
+  .anchor-high-contrast {
+    @apply text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 
+           underline underline-offset-2 font-medium transition-colors;
+  }
+  
+  /* Signal type badges with good contrast */
+  .signal-buy {
+    @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300 
+           px-2 py-1 rounded font-semibold text-sm;
+  }
+  
+  .signal-sell {
+    @apply bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 
+           px-2 py-1 rounded font-semibold text-sm;
+  }
+  
+  .signal-hold {
+    @apply bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300 
+           px-2 py-1 rounded font-semibold text-sm;
+  }
+  
+  /* Strong indicator colors for charts and displays */
+  .indicator-positive {
+    @apply text-emerald-600 dark:text-emerald-400;
+  }
+  
+  .indicator-negative {
+    @apply text-rose-600 dark:text-rose-400;
+  }
+  
+  .indicator-neutral {
+    @apply text-slate-500 dark:text-slate-400;
   }
 }

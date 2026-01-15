@@ -9,3 +9,5 @@ export { default as TopMovers } from './TopMovers.svelte';
 export { default as IndexSummary } from './IndexSummary.svelte';
 export { default as SignalCard } from './SignalCard.svelte';
 export { default as SignalFilters } from './SignalFilters.svelte';
+export { default as StockAnalysis } from './StockAnalysis.svelte';
+export * from './BrokerFlow';

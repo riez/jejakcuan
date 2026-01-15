@@ -99,7 +99,7 @@
         : '-',
       item.score?.composite_score.toFixed(0) ?? '-'
     ]),
-    meta: watchlist.map((item) => item.symbol)
+    meta: watchlist.map((item) => [item.symbol])
   });
 
   function handleTableSelect(e: CustomEvent<string[]>) {

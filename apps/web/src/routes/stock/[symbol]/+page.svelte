@@ -93,24 +93,26 @@
   <!-- Header -->
   <div class="flex items-start justify-between">
     <div>
-      <a href="/" class="anchor text-sm">&larr; Back to Screener</a>
+      <a href="/" class="anchor-high-contrast text-sm">&larr; Back to Screener</a>
       <div class="flex items-baseline gap-4 mt-2">
         <h1 class="h1">{symbol}</h1>
         {#if latestPrice}
-          <span class="text-2xl font-semibold">
+          <span class="text-2xl font-semibold text-slate-900 dark:text-slate-100">
             {latestPrice.close.toLocaleString()}
           </span>
           <span
-            class="text-lg"
-            class:text-green-500={priceChange().value >= 0}
-            class:text-red-500={priceChange().value < 0}
+            class="text-lg font-bold"
+            class:text-emerald-600={priceChange().value >= 0}
+            class:dark:text-emerald-400={priceChange().value >= 0}
+            class:text-rose-600={priceChange().value < 0}
+            class:dark:text-rose-400={priceChange().value < 0}
           >
             {priceChange().value >= 0 ? '+' : ''}{priceChange().percent.toFixed(2)}%
           </span>
         {/if}
       </div>
       {#if stock}
-        <p class="text-surface-600-300-token">{stock.name}</p>
+        <p class="text-slate-600 dark:text-slate-300">{stock.name}</p>
       {/if}
     </div>
 
@@ -206,20 +208,20 @@
             {#if latestPrice}
               <hr class="opacity-20" />
               <div class="flex justify-between">
-                <dt class="text-surface-600-300-token">Open</dt>
-                <dd class="font-medium">{latestPrice.open.toLocaleString()}</dd>
+                <dt class="text-slate-600 dark:text-slate-300">Open</dt>
+                <dd class="font-medium text-slate-900 dark:text-slate-100">{latestPrice.open.toLocaleString()}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-surface-600-300-token">High</dt>
-                <dd class="font-medium text-green-500">{latestPrice.high.toLocaleString()}</dd>
+                <dt class="text-slate-600 dark:text-slate-300">High</dt>
+                <dd class="font-semibold text-emerald-600 dark:text-emerald-400">{latestPrice.high.toLocaleString()}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-surface-600-300-token">Low</dt>
-                <dd class="font-medium text-red-500">{latestPrice.low.toLocaleString()}</dd>
+                <dt class="text-slate-600 dark:text-slate-300">Low</dt>
+                <dd class="font-semibold text-rose-600 dark:text-rose-400">{latestPrice.low.toLocaleString()}</dd>
               </div>
               <div class="flex justify-between">
-                <dt class="text-surface-600-300-token">Volume</dt>
-                <dd class="font-medium">{latestPrice.volume.toLocaleString()}</dd>
+                <dt class="text-slate-600 dark:text-slate-300">Volume</dt>
+                <dd class="font-medium text-slate-900 dark:text-slate-100">{latestPrice.volume.toLocaleString()}</dd>
               </div>
             {/if}
           </dl>
