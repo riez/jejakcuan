@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { flip } from 'svelte/animate';
-  import { Table, ProgressRadial, TabGroup, Tab, getModalStore } from '@skeletonlabs/skeleton';
-  import type { TableSource, ModalSettings } from '@skeletonlabs/skeleton';
+  import { ProgressRadial, TabGroup, Tab, getModalStore } from '@skeletonlabs/skeleton';
+  import type { ModalSettings } from '@skeletonlabs/skeleton';
   import { api, type WatchlistItem, type Stock, type StockScore } from '$lib/api';
   import { WatchlistCard } from '$lib/components';
   import { goto } from '$app/navigation';
@@ -87,27 +87,22 @@
     modalStore.trigger(modal);
   }
 
-  // Table source for Skeleton Table component
-  let tableSource = $derived<TableSource>({
-    head: ['Symbol', 'Name', 'Price', 'Change', 'Score'],
-    body: watchlist.map((item) => [
-      item.symbol,
-      item.stock?.name ?? '-',
-      item.latestPrice?.toLocaleString() ?? '-',
-      item.priceChange !== undefined 
-        ? `${item.priceChange > 0 ? '+' : ''}${item.priceChange.toFixed(2)}%`
-        : '-',
-      item.score?.composite_score.toFixed(0) ?? '-'
-    ]),
-    meta: watchlist.map((item) => item.symbol)
-  });
+  function navigateToStock(symbol: string) {
+    goto(`/stock/${symbol}`);
+  }
 
-  function handleTableSelect(e: CustomEvent<string[]>) {
-    const meta = e.detail;
-    const symbol = Array.isArray(meta) ? meta[0] : meta;
-    if (symbol) {
-      goto(`/stock/${symbol}`);
-    }
+  function getPriceChangeColor(change: number | undefined): string {
+    if (change === undefined) return 'text-slate-400';
+    if (change > 0) return 'text-emerald-500 dark:text-emerald-400';
+    if (change < 0) return 'text-rose-500 dark:text-rose-400';
+    return 'text-slate-400';
+  }
+
+  function getScoreColor(score: number | undefined): string {
+    if (score === undefined) return 'text-slate-400';
+    if (score >= 70) return 'text-emerald-500 dark:text-emerald-400 font-bold';
+    if (score >= 50) return 'text-amber-500 dark:text-amber-400';
+    return 'text-rose-500 dark:text-rose-400';
   }
 
   // Drag and drop handlers
@@ -240,13 +235,58 @@
       {/each}
     </div>
   {:else}
-    <!-- Table View using Skeleton Table component -->
+    <!-- Table View -->
     <div class="card">
-      <Table
-        source={tableSource}
-        interactive={true}
-        on:selected={handleTableSelect}
-      />
+      <div class="table-container">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th class="text-slate-900 dark:text-slate-100">Symbol</th>
+              <th class="text-slate-900 dark:text-slate-100">Name</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Price</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Change</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Score</th>
+              <th class="text-slate-900 dark:text-slate-100 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each watchlist as item (item.symbol)}
+              <tr class="cursor-pointer hover:bg-primary-500/10">
+                <td 
+                  class="font-mono font-bold text-primary-600 dark:text-primary-400"
+                  onclick={() => navigateToStock(item.symbol)}
+                >{item.symbol}</td>
+                <td 
+                  class="text-slate-700 dark:text-slate-300"
+                  onclick={() => navigateToStock(item.symbol)}
+                >{item.stock?.name ?? '-'}</td>
+                <td 
+                  class="text-right font-tabular text-slate-900 dark:text-slate-100"
+                  onclick={() => navigateToStock(item.symbol)}
+                >{item.latestPrice?.toLocaleString() ?? '-'}</td>
+                <td 
+                  class="text-right font-tabular {getPriceChangeColor(item.priceChange)}"
+                  onclick={() => navigateToStock(item.symbol)}
+                >
+                  {item.priceChange !== undefined 
+                    ? `${item.priceChange > 0 ? '+' : ''}${item.priceChange.toFixed(2)}%`
+                    : '-'}
+                </td>
+                <td 
+                  class="text-right font-tabular {getScoreColor(item.score?.composite_score)}"
+                  onclick={() => navigateToStock(item.symbol)}
+                >{item.score?.composite_score.toFixed(0) ?? '-'}</td>
+                <td class="text-center">
+                  <button 
+                    class="btn btn-sm variant-soft-error"
+                    onclick={() => removeItem(item.symbol)}
+                  >Remove</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     </div>
   {/if}
 

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Table, ProgressRadial } from '@skeletonlabs/skeleton';
-  import type { TableSource } from '@skeletonlabs/skeleton';
+  import { ProgressRadial } from '@skeletonlabs/skeleton';
   import { api, type Stock, type StockScore } from '$lib/api';
   import { goto } from '$app/navigation';
 
@@ -45,11 +44,8 @@
 
   onMount(async () => {
     try {
-      // Fetch stocks
       const stocksResponse = await api.getStocks();
       stocks = stocksResponse.stocks;
-
-      // Fetch scores
       const scoresResponse = await api.getTopScores(500);
       scores = new Map(scoresResponse.map((s) => [s.symbol, s]));
     } catch (e) {
@@ -59,36 +55,15 @@
     }
   });
 
-  function getScoreClass(score: number | null): string {
-    if (score === null) return 'variant-soft';
-    if (score >= 70) return 'variant-filled-success';
-    if (score >= 50) return 'variant-filled-warning';
-    return 'variant-filled-error';
+  function getScoreColor(score: number | null): string {
+    if (score === null) return 'text-slate-400';
+    if (score >= 70) return 'text-emerald-500 dark:text-emerald-400 font-bold';
+    if (score >= 50) return 'text-amber-500 dark:text-amber-400';
+    return 'text-rose-500 dark:text-rose-400';
   }
 
-  // Table source for Skeleton Table component
-  let tableSource = $derived<TableSource>({
-    head: ['Symbol', 'Name', 'Sector', 'Score', 'Tech', 'Fund', 'Sent', 'ML'],
-    body: stocksWithScores().map((stock) => [
-      stock.symbol,
-      stock.name.length > 30 ? stock.name.substring(0, 30) + '...' : stock.name,
-      stock.sector ?? '-',
-      stock.composite_score?.toFixed(0) ?? '-',
-      stock.technical_score?.toFixed(0) ?? '-',
-      stock.fundamental_score?.toFixed(0) ?? '-',
-      stock.sentiment_score?.toFixed(0) ?? '-',
-      stock.ml_score?.toFixed(0) ?? '-'
-    ]),
-    meta: stocksWithScores().map((stock) => stock.symbol)
-  });
-
-  function handleTableSelect(e: CustomEvent<string[]>) {
-    const meta = e.detail;
-    // meta is the row's meta value (stock.symbol string)
-    const symbol = Array.isArray(meta) ? meta[0] : meta;
-    if (symbol) {
-      goto(`/stock/${symbol}`);
-    }
+  function navigateToStock(symbol: string) {
+    goto(`/stock/${symbol}`);
   }
 </script>
 
@@ -142,13 +117,39 @@
         <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
       </div>
     {:else}
-      <Table
-        source={tableSource}
-        interactive={true}
-        on:selected={handleTableSelect}
-        regionHeadCell="text-left"
-        regionBodyCell="text-left"
-      />
+      <div class="table-container">
+        <table class="table table-hover">
+          <thead>
+            <tr>
+              <th class="text-slate-900 dark:text-slate-100">Symbol</th>
+              <th class="text-slate-900 dark:text-slate-100">Name</th>
+              <th class="text-slate-900 dark:text-slate-100">Sector</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Score</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Tech</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Fund</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">Sent</th>
+              <th class="text-slate-900 dark:text-slate-100 text-right">ML</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each stocksWithScores() as stock (stock.symbol)}
+              <tr 
+                class="cursor-pointer hover:bg-primary-500/10"
+                onclick={() => navigateToStock(stock.symbol)}
+              >
+                <td class="font-mono font-bold text-primary-600 dark:text-primary-400">{stock.symbol}</td>
+                <td class="text-slate-700 dark:text-slate-300">{stock.name.length > 35 ? stock.name.substring(0, 35) + '...' : stock.name}</td>
+                <td class="text-slate-600 dark:text-slate-400">{stock.sector ?? '-'}</td>
+                <td class="text-right font-tabular {getScoreColor(stock.composite_score)}">{stock.composite_score?.toFixed(0) ?? '-'}</td>
+                <td class="text-right font-tabular {getScoreColor(stock.technical_score)}">{stock.technical_score?.toFixed(0) ?? '-'}</td>
+                <td class="text-right font-tabular {getScoreColor(stock.fundamental_score)}">{stock.fundamental_score?.toFixed(0) ?? '-'}</td>
+                <td class="text-right font-tabular {getScoreColor(stock.sentiment_score)}">{stock.sentiment_score?.toFixed(0) ?? '-'}</td>
+                <td class="text-right font-tabular {getScoreColor(stock.ml_score)}">{stock.ml_score?.toFixed(0) ?? '-'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   </div>
 </div>

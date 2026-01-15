@@ -1,8 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
-  import { TabGroup, Tab, Table, ProgressRadial } from '@skeletonlabs/skeleton';
-  import type { TableSource } from '@skeletonlabs/skeleton';
+  import { TabGroup, Tab, ProgressRadial } from '@skeletonlabs/skeleton';
   import { api, type Stock, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
   import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
@@ -71,18 +70,8 @@
     return { value: change, percent };
   });
 
-  // Table source for price history
-  let priceTableSource = $derived<TableSource>({
-    head: ['Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
-    body: prices.slice().reverse().slice(0, 10).map((price) => [
-      new Date(price.time).toLocaleDateString(),
-      price.open.toLocaleString(),
-      price.high.toLocaleString(),
-      price.low.toLocaleString(),
-      price.close.toLocaleString(),
-      price.volume.toLocaleString()
-    ])
-  });
+  // Get recent prices for table display
+  let recentPrices = $derived(() => prices.slice().reverse().slice(0, 10));
 </script>
 
 <svelte:head>
@@ -93,7 +82,7 @@
   <!-- Header -->
   <div class="flex items-start justify-between">
     <div>
-      <a href="/" class="anchor-high-contrast text-sm">&larr; Back to Screener</a>
+      <a href="/" class="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline underline-offset-2">&larr; Back to Screener</a>
       <div class="flex items-baseline gap-4 mt-2">
         <h1 class="h1">{symbol}</h1>
         {#if latestPrice}
@@ -228,13 +217,38 @@
         </div>
       </div>
 
-      <!-- Price History Table using Skeleton Table -->
+      <!-- Price History Table -->
       <div class="card p-4">
         <h3 class="h3 mb-4">Recent Price History</h3>
         {#if prices.length > 0}
-          <Table source={priceTableSource} />
+          <div class="table-container">
+            <table class="table table-hover">
+              <thead>
+                <tr>
+                  <th class="text-slate-900 dark:text-slate-100">Date</th>
+                  <th class="text-slate-900 dark:text-slate-100 text-right">Open</th>
+                  <th class="text-slate-900 dark:text-slate-100 text-right">High</th>
+                  <th class="text-slate-900 dark:text-slate-100 text-right">Low</th>
+                  <th class="text-slate-900 dark:text-slate-100 text-right">Close</th>
+                  <th class="text-slate-900 dark:text-slate-100 text-right">Volume</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each recentPrices() as price}
+                  <tr>
+                    <td class="text-slate-700 dark:text-slate-300">{new Date(price.time).toLocaleDateString()}</td>
+                    <td class="text-right font-tabular text-slate-700 dark:text-slate-300">{price.open.toLocaleString()}</td>
+                    <td class="text-right font-tabular text-emerald-600 dark:text-emerald-400">{price.high.toLocaleString()}</td>
+                    <td class="text-right font-tabular text-rose-600 dark:text-rose-400">{price.low.toLocaleString()}</td>
+                    <td class="text-right font-tabular font-semibold text-slate-900 dark:text-slate-100">{price.close.toLocaleString()}</td>
+                    <td class="text-right font-tabular text-slate-600 dark:text-slate-400">{price.volume.toLocaleString()}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
         {:else}
-          <p class="text-surface-600-300-token text-center p-4">No price history available</p>
+          <p class="text-slate-500 dark:text-slate-400 text-center p-4">No price history available</p>
         {/if}
       </div>
     {:else}

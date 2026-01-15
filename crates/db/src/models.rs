@@ -2,8 +2,26 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+
+fn serialize_decimal_as_f64<S>(value: &Decimal, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64(value.to_f64().unwrap_or(0.0))
+}
+
+fn serialize_option_decimal_as_f64<S>(value: &Option<Decimal>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(d) => serializer.serialize_some(&d.to_f64().unwrap_or(0.0)),
+        None => serializer.serialize_none(),
+    }
+}
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct StockRow {
@@ -23,11 +41,16 @@ pub struct StockRow {
 pub struct StockPriceRow {
     pub time: DateTime<Utc>,
     pub symbol: String,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub open: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub high: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub low: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_f64")]
     pub close: Decimal,
     pub volume: i64,
+    #[serde(serialize_with = "serialize_option_decimal_as_f64")]
     pub value: Option<Decimal>,
     pub frequency: Option<i64>,
 }
@@ -94,14 +117,6 @@ pub struct StockScoreRow {
     pub fundamental_breakdown: Option<serde_json::Value>,
     pub sentiment_breakdown: Option<serde_json::Value>,
     pub ml_breakdown: Option<serde_json::Value>,
-}
-
-fn serialize_decimal_as_f64<S>(value: &Decimal, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    use rust_decimal::prelude::ToPrimitive;
-    serializer.serialize_f64(value.to_f64().unwrap_or(0.0))
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
