@@ -92,7 +92,7 @@ run_migrations() {
 run_api() {
     echo -e "\n${BLUE}Starting Rust API server...${NC}"
     cd "$PROJECT_ROOT"
-    cargo run -p jejakcuan-api
+    cargo run --bin jejakcuan-api
 }
 
 run_web() {
@@ -147,7 +147,7 @@ run_all() {
     echo -e "${YELLOW}Press Ctrl+C to stop all services${NC}\n"
     
     # Start services in background
-    (cd "$PROJECT_ROOT" && cargo run -p jejakcuan-api 2>&1 | sed 's/^/[API] /') &
+    (cd "$PROJECT_ROOT" && cargo run --bin jejakcuan-api 2>&1 | sed 's/^/[API] /') &
     API_PID=$!
     
     sleep 2
