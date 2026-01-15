@@ -152,7 +152,59 @@ class PriceHistoryScraper(BaseScraper):
         start_date: date,
         end_date: date,
     ) -> list[PriceBar]:
-        """Fetch prices from Yahoo Finance.
+        """Fetch prices from Yahoo Finance using yfinance library.
+
+        Args:
+            symbol: Stock symbol
+            start_date: Start date
+            end_date: End date
+
+        Returns:
+            List of price bars
+        """
+        import yfinance as yf
+
+        prices: list[PriceBar] = []
+
+        # Yahoo Finance uses .JK suffix for Indonesian stocks
+        yf_symbol = f"{symbol}.JK"
+
+        try:
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(start=start_date, end=end_date)
+
+            if df.empty:
+                logger.debug(f"No data from Yahoo Finance for {symbol}")
+                return prices
+
+            for idx, row in df.iterrows():
+                ts = idx.to_pydatetime().replace(tzinfo=UTC)
+                prices.append(
+                    PriceBar(
+                        symbol=symbol,
+                        time=ts,
+                        open=Decimal(str(round(row["Open"], 2))),
+                        high=Decimal(str(round(row["High"], 2))),
+                        low=Decimal(str(round(row["Low"], 2))),
+                        close=Decimal(str(round(row["Close"], 2))),
+                        volume=int(row["Volume"]),
+                    )
+                )
+
+            logger.debug(f"Fetched {len(prices)} prices for {symbol} from Yahoo Finance")
+
+        except Exception as e:
+            logger.warning(f"Yahoo Finance error for {symbol}: {e}")
+
+        return prices
+
+    async def _fetch_yahoo_finance_old(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+    ) -> list[PriceBar]:
+        """Fetch prices from Yahoo Finance API (fallback).
 
         Args:
             symbol: Stock symbol

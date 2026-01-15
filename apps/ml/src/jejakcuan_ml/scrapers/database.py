@@ -86,7 +86,7 @@ class DatabaseClient:
         with self.cursor() as cur:
             cur.execute("SELECT symbol FROM stocks WHERE is_active = true ORDER BY symbol")
             rows = cur.fetchall()
-            return [str(row[0]) for row in rows]
+            return [str(row["symbol"]) for row in rows]
 
     def get_stock_by_symbol(self, symbol: str) -> dict[str, Any] | None:
         """Get stock info by symbol.
@@ -335,8 +335,8 @@ class DatabaseClient:
                 (symbol,),
             )
             result = cur.fetchone()
-            if result and result[0] is not None:
-                return result[0]  # type: ignore[no-any-return]
+            if result and result.get("latest") is not None:
+                return result["latest"]  # type: ignore[no-any-return]
             return None
 
     def get_stock_count(self) -> int:
