@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { ProgressRadial } from '@skeletonlabs/skeleton';
   import { SignalCard, SignalFilters } from '$lib/components';
 
   interface Signal {
@@ -160,7 +161,12 @@
       class="btn variant-ghost-primary"
       disabled={isLoading}
     >
-      {isLoading ? 'Loading...' : 'Refresh'}
+      {#if isLoading}
+        <ProgressRadial width="w-5" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+        <span>Loading...</span>
+      {:else}
+        Refresh
+      {/if}
     </button>
   </div>
 
@@ -189,14 +195,8 @@
 
   <!-- Signal List -->
   {#if isLoading}
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {#each [1, 2, 3, 4] as _}
-        <div class="card p-4 animate-pulse">
-          <div class="h-6 bg-surface-300 dark:bg-surface-700 rounded w-1/4 mb-3"></div>
-          <div class="h-4 bg-surface-300 dark:bg-surface-700 rounded w-1/2 mb-2"></div>
-          <div class="h-16 bg-surface-300 dark:bg-surface-700 rounded"></div>
-        </div>
-      {/each}
+    <div class="flex items-center justify-center p-8">
+      <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
     </div>
   {:else if filteredSignals.length === 0}
     <div class="card p-8 text-center">

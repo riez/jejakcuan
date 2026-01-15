@@ -1,6 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
+  import { TabGroup, Tab, Table, ProgressRadial } from '@skeletonlabs/skeleton';
+  import type { TableSource } from '@skeletonlabs/skeleton';
   import { api, type Stock, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
   import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
@@ -12,7 +14,7 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
-  let activeTab = $state<'technical' | 'fundamental'>('technical');
+  let tabSet = $state(0); // 0 = technical, 1 = fundamental
 
   onMount(async () => {
     if (!symbol) {
@@ -68,6 +70,19 @@
     const percent = (change / previous.close) * 100;
     return { value: change, percent };
   });
+
+  // Table source for price history
+  let priceTableSource = $derived<TableSource>({
+    head: ['Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+    body: prices.slice().reverse().slice(0, 10).map((price) => [
+      new Date(price.time).toLocaleDateString(),
+      price.open.toLocaleString(),
+      price.high.toLocaleString(),
+      price.low.toLocaleString(),
+      price.close.toLocaleString(),
+      price.volume.toLocaleString()
+    ])
+  });
 </script>
 
 <svelte:head>
@@ -114,27 +129,17 @@
   {/if}
 
   {#if isLoading}
-    <div class="card p-8 text-center">
-      <p>Loading...</p>
+    <div class="flex items-center justify-center p-8">
+      <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
     </div>
   {:else if stock}
-    <!-- Tab Navigation -->
-    <div class="flex gap-2 mb-4">
-      <button
-        class="btn {activeTab === 'technical' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
-        onclick={() => (activeTab = 'technical')}
-      >
-        Technical
-      </button>
-      <button
-        class="btn {activeTab === 'fundamental' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
-        onclick={() => (activeTab = 'fundamental')}
-      >
-        Fundamental
-      </button>
-    </div>
+    <!-- Tab Navigation using TabGroup -->
+    <TabGroup>
+      <Tab bind:group={tabSet} name="technical" value={0}>Technical</Tab>
+      <Tab bind:group={tabSet} name="fundamental" value={1}>Fundamental</Tab>
+    </TabGroup>
 
-    {#if activeTab === 'technical'}
+    {#if tabSet === 0}
       <!-- Price Chart -->
       <div class="card p-4">
         <h3 class="h3 mb-4">Price Chart (60 Days)</h3>
@@ -221,36 +226,11 @@
         </div>
       </div>
 
-      <!-- Price History Table -->
+      <!-- Price History Table using Skeleton Table -->
       <div class="card p-4">
         <h3 class="h3 mb-4">Recent Price History</h3>
         {#if prices.length > 0}
-          <div class="table-container">
-            <table class="table table-compact">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th class="text-right">Open</th>
-                  <th class="text-right">High</th>
-                  <th class="text-right">Low</th>
-                  <th class="text-right">Close</th>
-                  <th class="text-right">Volume</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each prices.slice().reverse().slice(0, 10) as price}
-                  <tr>
-                    <td>{new Date(price.time).toLocaleDateString()}</td>
-                    <td class="text-right">{price.open.toLocaleString()}</td>
-                    <td class="text-right text-green-500">{price.high.toLocaleString()}</td>
-                    <td class="text-right text-red-500">{price.low.toLocaleString()}</td>
-                    <td class="text-right font-medium">{price.close.toLocaleString()}</td>
-                    <td class="text-right text-surface-600-300-token">{price.volume.toLocaleString()}</td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
+          <Table source={priceTableSource} />
         {:else}
           <p class="text-surface-600-300-token text-center p-4">No price history available</p>
         {/if}

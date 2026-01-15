@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { Table, ProgressRadial } from '@skeletonlabs/skeleton';
+  import type { TableSource } from '@skeletonlabs/skeleton';
   import { api, type Stock, type StockScore } from '$lib/api';
+  import { goto } from '$app/navigation';
 
   let stocks = $state<Stock[]>([]);
   let scores = $state<Map<string, StockScore>>(new Map());
@@ -62,6 +65,29 @@
     if (score >= 50) return 'variant-filled-warning';
     return 'variant-filled-error';
   }
+
+  // Table source for Skeleton Table component
+  let tableSource = $derived<TableSource>({
+    head: ['Symbol', 'Name', 'Sector', 'Score', 'Tech', 'Fund', 'Sent', 'ML'],
+    body: stocksWithScores().map((stock) => [
+      stock.symbol,
+      stock.name.length > 30 ? stock.name.substring(0, 30) + '...' : stock.name,
+      stock.sector ?? '-',
+      stock.composite_score?.toFixed(0) ?? '-',
+      stock.technical_score?.toFixed(0) ?? '-',
+      stock.fundamental_score?.toFixed(0) ?? '-',
+      stock.sentiment_score?.toFixed(0) ?? '-',
+      stock.ml_score?.toFixed(0) ?? '-'
+    ]),
+    meta: stocksWithScores().map((stock) => stock.symbol)
+  });
+
+  function handleTableSelect(e: CustomEvent<string[]>) {
+    const symbol = e.detail[0];
+    if (symbol) {
+      goto(`/stock/${symbol}`);
+    }
+  }
 </script>
 
 <svelte:head>
@@ -110,48 +136,17 @@
   <!-- Stocks Table -->
   <div class="card">
     {#if isLoading}
-      <div class="p-8 text-center">
-        <p>Loading stocks...</p>
+      <div class="p-8 flex items-center justify-center">
+        <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
       </div>
     {:else}
-      <div class="table-container">
-        <table class="table table-hover">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Name</th>
-              <th>Sector</th>
-              <th class="text-center">Score</th>
-              <th class="text-center">Tech</th>
-              <th class="text-center">Fund</th>
-              <th class="text-center">Sent</th>
-              <th class="text-center">ML</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each stocksWithScores() as stock}
-              <tr>
-                <td>
-                  <a href="/stock/{stock.symbol}" class="anchor font-bold">
-                    {stock.symbol}
-                  </a>
-                </td>
-                <td class="max-w-[200px] truncate">{stock.name}</td>
-                <td class="text-surface-600-300-token">{stock.sector ?? '-'}</td>
-                <td class="text-center">
-                  <span class="badge {getScoreClass(stock.composite_score)}">
-                    {stock.composite_score?.toFixed(0) ?? '-'}
-                  </span>
-                </td>
-                <td class="text-center text-sm">{stock.technical_score?.toFixed(0) ?? '-'}</td>
-                <td class="text-center text-sm">{stock.fundamental_score?.toFixed(0) ?? '-'}</td>
-                <td class="text-center text-sm">{stock.sentiment_score?.toFixed(0) ?? '-'}</td>
-                <td class="text-center text-sm">{stock.ml_score?.toFixed(0) ?? '-'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <Table
+        source={tableSource}
+        interactive={true}
+        on:selected={handleTableSelect}
+        regionHeadCell="text-left"
+        regionBodyCell="text-left"
+      />
     {/if}
   </div>
 </div>

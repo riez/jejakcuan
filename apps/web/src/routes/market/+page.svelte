@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { ProgressRadial, ProgressBar } from '@skeletonlabs/skeleton';
   import { SectorHeatmap, TopMovers, IndexSummary } from '$lib/components';
 
   // Mock data - in production, fetch from API
@@ -108,7 +109,12 @@
         class="btn variant-ghost-primary"
         disabled={isLoading}
       >
-        {isLoading ? 'Loading...' : 'Refresh'}
+        {#if isLoading}
+          <ProgressRadial width="w-5" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+          <span>Loading...</span>
+        {:else}
+          Refresh
+        {/if}
       </button>
     </div>
   </div>
@@ -145,13 +151,16 @@
   <!-- Top Movers -->
   <TopMovers {gainers} {losers} />
 
-  <!-- Market Breadth (placeholder) -->
+  <!-- Market Breadth using ProgressBar -->
   <div class="card p-4">
     <h2 class="h3 mb-4">Market Breadth</h2>
-    <div class="flex items-center gap-2">
-      <div class="flex-1 h-6 bg-green-500 rounded-l" style="width: 47%"></div>
-      <div class="flex-1 h-6 bg-red-500 rounded-r" style="width: 33%"></div>
-    </div>
+    <ProgressBar 
+      value={47} 
+      max={100} 
+      height="h-6"
+      meter="bg-gradient-to-r from-green-500 via-yellow-500 to-red-500"
+      track="bg-surface-200-700-token"
+    />
     <div class="flex justify-between mt-2 text-sm">
       <span class="text-green-500">47% Advancing</span>
       <span class="text-surface-500">20% Unchanged</span>

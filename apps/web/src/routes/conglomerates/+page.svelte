@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { ProgressBar } from '@skeletonlabs/skeleton';
+
 	interface Conglomerate {
 		id: string;
 		name: string;
@@ -133,8 +135,8 @@
 									</div>
 									<div class="flex items-center justify-between text-sm">
 										<span class="text-surface-500">{stock.sector}</span>
-										<div class="w-32 h-2 bg-surface-300 dark:bg-surface-700 rounded-full overflow-hidden">
-											<div class="h-full bg-primary-500 rounded-full" style="width: {stock.weight}%"></div>
+										<div class="w-32">
+											<ProgressBar value={stock.weight} max={100} height="h-2" meter="bg-primary-500" track="bg-surface-300-600-token" />
 										</div>
 									</div>
 								</a>

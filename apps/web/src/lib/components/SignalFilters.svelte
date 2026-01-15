@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { RangeSlider } from '@skeletonlabs/skeleton';
+
   interface Filters {
     type: 'all' | 'buy' | 'sell' | 'hold';
     strength: 'all' | 'strong' | 'moderate' | 'weak';
@@ -41,17 +43,16 @@
       </label>
     </div>
 
-    <!-- Min Score -->
+    <!-- Min Score using RangeSlider -->
     <div>
       <label class="label">
         <span class="text-sm">Min Score: {filters.minScore}</span>
-        <input 
-          type="range" 
-          class="range"
-          min="0" 
-          max="100" 
-          step="10"
+        <RangeSlider 
+          name="minScore"
           bind:value={filters.minScore}
+          min={0}
+          max={100}
+          step={10}
         />
       </label>
     </div>

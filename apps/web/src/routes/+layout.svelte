@@ -1,10 +1,22 @@
 <script lang="ts">
   import '../app.css';
-  import { AppShell, AppBar } from '@skeletonlabs/skeleton';
+  import {
+    AppShell,
+    AppBar,
+    Modal,
+    Toast,
+    Drawer,
+    ProgressRadial,
+    initializeStores,
+    getDrawerStore
+  } from '@skeletonlabs/skeleton';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { auth } from '$lib/stores/auth';
+
+  // Initialize Skeleton stores for Modal, Toast, and Drawer
+  initializeStores();
 
   let { children } = $props();
 
@@ -24,6 +36,11 @@
     goto('/login');
   }
 </script>
+
+<!-- Skeleton Overlay Components -->
+<Modal />
+<Toast />
+<Drawer />
 
 {#if $auth.isAuthenticated}
   <AppShell>
@@ -50,7 +67,7 @@
   <main class="container mx-auto p-4">
     {#if $auth.isLoading}
       <div class="flex items-center justify-center min-h-[50vh]">
-        <p>Loading...</p>
+        <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
       </div>
     {:else}
       {@render children()}

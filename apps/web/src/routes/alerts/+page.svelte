@@ -1,4 +1,9 @@
 <script lang="ts">
+	import { SlideToggle, getModalStore } from '@skeletonlabs/skeleton';
+	import type { ModalSettings } from '@skeletonlabs/skeleton';
+
+	const modalStore = getModalStore();
+
 	interface AlertConfig {
 		id: string;
 		name: string;
@@ -58,10 +63,18 @@
 		);
 	}
 	
-	function deleteAlert(id: string) {
-		if (confirm('Are you sure you want to delete this alert?')) {
-			alerts = alerts.filter(a => a.id !== id);
-		}
+	function deleteAlert(id: string, name: string) {
+		const modal: ModalSettings = {
+			type: 'confirm',
+			title: 'Delete Alert',
+			body: `Are you sure you want to delete "${name}"?`,
+			response: (confirmed: boolean) => {
+				if (confirmed) {
+					alerts = alerts.filter(a => a.id !== id);
+				}
+			}
+		};
+		modalStore.trigger(modal);
 	}
 	
 	function getTypeIcon(type: string): string {
@@ -137,15 +150,15 @@
 				<div class="flex items-center gap-4 mb-4">
 					<span class="text-2xl">{getTypeIcon(alert.type)}</span>
 					<h3 class="h4 flex-1">{alert.name}</h3>
-					<label class="flex items-center gap-2">
-						<input 
-							type="checkbox" 
-							class="checkbox"
+					<div class="flex items-center gap-2">
+						<SlideToggle 
+							name={`alert-${alert.id}`}
 							checked={alert.enabled}
-							onchange={() => toggleAlert(alert.id)}
+							on:change={() => toggleAlert(alert.id)}
+							size="sm"
 						/>
 						<span class="text-sm text-surface-500">{alert.enabled ? 'Enabled' : 'Disabled'}</span>
-					</label>
+					</div>
 				</div>
 				
 				<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -186,7 +199,7 @@
 				<!-- Actions -->
 				<div class="flex gap-2">
 					<button class="btn btn-sm variant-ghost-surface">Edit</button>
-					<button class="btn btn-sm variant-ghost-error" onclick={() => deleteAlert(alert.id)}>Delete</button>
+					<button class="btn btn-sm variant-ghost-error" onclick={() => deleteAlert(alert.id, alert.name)}>Delete</button>
 				</div>
 			</div>
 		{/each}

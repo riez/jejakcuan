@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { ProgressBar } from '@skeletonlabs/skeleton';
+
   interface ScoreBreakdown {
     name: string;
     score: number;
@@ -28,12 +30,13 @@
           <span class="text-surface-500">({(component.weight * 100).toFixed(0)}%)</span>
         </span>
       </div>
-      <div class="w-full bg-surface-200 dark:bg-surface-700 rounded-full h-2">
-        <div
-          class="h-2 rounded-full transition-all duration-500 {getBarColor(component.score)}"
-          style="width: {component.score}%"
-        ></div>
-      </div>
+      <ProgressBar
+        value={component.score}
+        max={100}
+        height="h-2"
+        meter={getBarColor(component.score)}
+        track="bg-surface-200-700-token"
+      />
       {#if component.signals.length > 0}
         <div class="mt-1 text-xs text-surface-500">
           {component.signals[0]}

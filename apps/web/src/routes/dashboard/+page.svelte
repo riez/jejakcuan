@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { ProgressBar, ProgressRadial } from '@skeletonlabs/skeleton';
 	import ScoreGauge from '$lib/components/ScoreGauge.svelte';
 	import SignalCard from '$lib/components/SignalCard.svelte';
 	import { BrokerFlowChart, ForeignFlow } from '$lib/components/BrokerFlow';
@@ -107,22 +108,22 @@
 						<div class="space-y-2">
 							<div class="flex items-center gap-2">
 								<span class="text-surface-500 text-sm w-16">Tech</span>
-								<div class="flex-1 h-2 bg-surface-300 dark:bg-surface-700 rounded-full overflow-hidden">
-									<div class="h-full bg-primary-500 rounded-full" style="width: {score.technical}%"></div>
+								<div class="flex-1">
+									<ProgressBar value={score.technical} max={100} height="h-2" meter="bg-primary-500" track="bg-surface-300-600-token" />
 								</div>
 								<span class="text-sm w-8">{score.technical}</span>
 							</div>
 							<div class="flex items-center gap-2">
 								<span class="text-surface-500 text-sm w-16">Fund</span>
-								<div class="flex-1 h-2 bg-surface-300 dark:bg-surface-700 rounded-full overflow-hidden">
-									<div class="h-full bg-green-500 rounded-full" style="width: {score.fundamental}%"></div>
+								<div class="flex-1">
+									<ProgressBar value={score.fundamental} max={100} height="h-2" meter="bg-green-500" track="bg-surface-300-600-token" />
 								</div>
 								<span class="text-sm w-8">{score.fundamental}</span>
 							</div>
 							<div class="flex items-center gap-2">
 								<span class="text-surface-500 text-sm w-16">Total</span>
-								<div class="flex-1 h-2 bg-surface-300 dark:bg-surface-700 rounded-full overflow-hidden">
-									<div class="h-full bg-warning-500 rounded-full" style="width: {score.composite}%"></div>
+								<div class="flex-1">
+									<ProgressBar value={score.composite} max={100} height="h-2" meter="bg-warning-500" track="bg-surface-300-600-token" />
 								</div>
 								<span class="text-sm w-8">{score.composite}</span>
 							</div>

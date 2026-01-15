@@ -1,8 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { flip } from 'svelte/animate';
+  import { Table, ProgressRadial, TabGroup, Tab, getModalStore } from '@skeletonlabs/skeleton';
+  import type { TableSource, ModalSettings } from '@skeletonlabs/skeleton';
   import { api, type WatchlistItem, type Stock, type StockScore } from '$lib/api';
   import { WatchlistCard } from '$lib/components';
+  import { goto } from '$app/navigation';
+
+  const modalStore = getModalStore();
 
   interface WatchlistItemFull extends WatchlistItem {
     stock?: Stock;
@@ -15,7 +20,7 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let draggedIndex = $state<number | null>(null);
-  let viewMode = $state<'cards' | 'table'>('cards');
+  let tabSet = $state(0); // 0 = cards, 1 = table
 
   onMount(async () => {
     await loadWatchlist();
@@ -64,11 +69,43 @@
   }
 
   async function removeItem(symbol: string) {
-    try {
-      await api.removeFromWatchlist(symbol);
-      watchlist = watchlist.filter((w) => w.symbol !== symbol);
-    } catch (e) {
-      error = (e as Error).message;
+    const modal: ModalSettings = {
+      type: 'confirm',
+      title: 'Remove from Watchlist',
+      body: `Are you sure you want to remove ${symbol} from your watchlist?`,
+      response: async (confirmed: boolean) => {
+        if (confirmed) {
+          try {
+            await api.removeFromWatchlist(symbol);
+            watchlist = watchlist.filter((w) => w.symbol !== symbol);
+          } catch (e) {
+            error = (e as Error).message;
+          }
+        }
+      }
+    };
+    modalStore.trigger(modal);
+  }
+
+  // Table source for Skeleton Table component
+  let tableSource = $derived<TableSource>({
+    head: ['Symbol', 'Name', 'Price', 'Change', 'Score'],
+    body: watchlist.map((item) => [
+      item.symbol,
+      item.stock?.name ?? '-',
+      item.latestPrice?.toLocaleString() ?? '-',
+      item.priceChange !== undefined 
+        ? `${item.priceChange > 0 ? '+' : ''}${item.priceChange.toFixed(2)}%`
+        : '-',
+      item.score?.composite_score.toFixed(0) ?? '-'
+    ]),
+    meta: watchlist.map((item) => item.symbol)
+  });
+
+  function handleTableSelect(e: CustomEvent<string[]>) {
+    const symbol = e.detail[0];
+    if (symbol) {
+      goto(`/stock/${symbol}`);
     }
   }
 
@@ -135,15 +172,11 @@
     <h1 class="h1">Watchlist</h1>
 
     <div class="flex items-center gap-2">
-      <!-- View toggle -->
-      <div class="btn-group variant-ghost">
-        <button class={viewMode === 'cards' ? 'variant-filled' : ''} onclick={() => (viewMode = 'cards')}>
-          Cards
-        </button>
-        <button class={viewMode === 'table' ? 'variant-filled' : ''} onclick={() => (viewMode = 'table')}>
-          Table
-        </button>
-      </div>
+      <!-- View toggle using TabGroup -->
+      <TabGroup>
+        <Tab bind:group={tabSet} name="cards" value={0}>Cards</Tab>
+        <Tab bind:group={tabSet} name="table" value={1}>Table</Tab>
+      </TabGroup>
 
       <!-- Sort dropdown -->
       <select
@@ -172,20 +205,15 @@
   {/if}
 
   {#if isLoading}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {#each [1, 2, 3] as _}
-        <div class="card p-4 animate-pulse">
-          <div class="h-6 bg-surface-300 dark:bg-surface-700 rounded w-1/3 mb-2"></div>
-          <div class="h-4 bg-surface-300 dark:bg-surface-700 rounded w-2/3"></div>
-        </div>
-      {/each}
+    <div class="flex items-center justify-center p-8">
+      <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
     </div>
   {:else if watchlist.length === 0}
     <div class="card p-8 text-center">
       <p class="text-surface-600-300-token mb-4">Your watchlist is empty.</p>
       <a href="/" class="btn variant-filled-primary">Browse Stocks</a>
     </div>
-  {:else if viewMode === 'cards'}
+  {:else if tabSet === 0}
     <!-- Card View with Drag-Drop -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {#each watchlist as item, index (item.symbol)}
@@ -211,72 +239,13 @@
       {/each}
     </div>
   {:else}
-    <!-- Table View -->
+    <!-- Table View using Skeleton Table component -->
     <div class="card">
-      <div class="table-container">
-        <table class="table table-hover">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Name</th>
-              <th class="text-right">Price</th>
-              <th class="text-right">Change</th>
-              <th class="text-right">Score</th>
-              <th class="text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each watchlist as item}
-              <tr>
-                <td>
-                  <a href="/stock/{item.symbol}" class="anchor font-bold">
-                    {item.symbol}
-                  </a>
-                </td>
-                <td class="truncate max-w-[200px]">{item.stock?.name ?? '-'}</td>
-                <td class="text-right font-mono">
-                  {item.latestPrice?.toLocaleString() ?? '-'}
-                </td>
-                <td class="text-right">
-                  {#if item.priceChange !== undefined}
-                    <span
-                      class={item.priceChange > 0
-                        ? 'text-green-500'
-                        : item.priceChange < 0
-                          ? 'text-red-500'
-                          : ''}
-                    >
-                      {item.priceChange > 0 ? '+' : ''}{item.priceChange.toFixed(2)}%
-                    </span>
-                  {:else}
-                    -
-                  {/if}
-                </td>
-                <td class="text-right">
-                  {#if item.score}
-                    <span
-                      class="badge {item.score.composite_score >= 70
-                        ? 'variant-filled-success'
-                        : item.score.composite_score >= 50
-                          ? 'variant-filled-warning'
-                          : 'variant-filled-error'}"
-                    >
-                      {item.score.composite_score.toFixed(0)}
-                    </span>
-                  {:else}
-                    -
-                  {/if}
-                </td>
-                <td class="text-right">
-                  <button onclick={() => removeItem(item.symbol)} class="btn btn-sm variant-ghost-error">
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <Table
+        source={tableSource}
+        interactive={true}
+        on:selected={handleTableSelect}
+      />
     </div>
   {/if}
 

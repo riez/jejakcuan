@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { ProgressRadial } from '@skeletonlabs/skeleton';
   import { auth } from '$lib/stores/auth';
 
   let username = $state('');
@@ -65,7 +66,12 @@
       </label>
 
       <button type="submit" class="btn variant-filled-primary w-full" disabled={isSubmitting}>
-        {isSubmitting ? 'Signing in...' : 'Sign In'}
+        {#if isSubmitting}
+          <ProgressRadial width="w-5" stroke={100} meter="stroke-on-primary-token" track="stroke-on-primary-token/30" />
+          <span>Signing in...</span>
+        {:else}
+          Sign In
+        {/if}
       </button>
     </form>
 
