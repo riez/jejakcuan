@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { SlideToggle, getModalStore } from '@skeletonlabs/skeleton';
-	import type { ModalSettings } from '@skeletonlabs/skeleton';
+	import { SlideToggle, RadioGroup, RadioItem, getModalStore } from '@skeletonlabs/skeleton';
+	import type { ModalSettings, ModalComponent } from '@skeletonlabs/skeleton';
 
 	const modalStore = getModalStore();
 
@@ -52,7 +52,6 @@
 		},
 	]);
 	
-	let showNewAlert = $state(false);
 	let newAlertType = $state<'price' | 'technical' | 'broker' | 'wyckoff'>('technical');
 	let newAlertName = $state('');
 	let newAlertChannels = $state({ telegram: true, email: false, push: true });
@@ -71,6 +70,30 @@
 			response: (confirmed: boolean) => {
 				if (confirmed) {
 					alerts = alerts.filter(a => a.id !== id);
+				}
+			}
+		};
+		modalStore.trigger(modal);
+	}
+
+	function showNewAlertModal() {
+		const modal: ModalSettings = {
+			type: 'prompt',
+			title: 'Create New Alert',
+			body: 'Enter a name for your new alert:',
+			value: '',
+			valueAttr: { type: 'text', placeholder: 'Alert name...', required: true },
+			response: (r: string | false) => {
+				if (r) {
+					const newAlert: AlertConfig = {
+						id: Date.now().toString(),
+						name: r || 'New Alert',
+						enabled: true,
+						type: 'technical',
+						symbols: [],
+						channels: ['telegram', 'push'],
+					};
+					alerts = [...alerts, newAlert];
 				}
 			}
 		};
@@ -99,7 +122,7 @@
 	function getTypeClass(type: string): string {
 		switch (type) {
 			case 'technical': return 'variant-soft-primary';
-			case 'broker': return 'variant-soft-success';
+			case 'broker': return 'variant-soft-secondary';
 			case 'wyckoff': return 'variant-soft-warning';
 			case 'price': return 'variant-soft-tertiary';
 			default: return 'variant-soft';
@@ -122,9 +145,9 @@
 		};
 		
 		alerts = [...alerts, newAlert];
-		showNewAlert = false;
 		newAlertName = '';
 		newAlertChannels = { telegram: true, email: false, push: true };
+		modalStore.close();
 	}
 </script>
 
@@ -136,9 +159,9 @@
 	<header class="flex items-center justify-between">
 		<div>
 			<h1 class="h1">Alert Management</h1>
-			<p class="text-surface-600-300-token">Configure your trading alerts and notifications</p>
+			<p class="text-surface-400">Configure your trading alerts and notifications</p>
 		</div>
-		<button class="btn variant-filled-primary" onclick={() => showNewAlert = true}>
+		<button class="btn variant-filled-primary" onclick={showNewAlertModal}>
 			+ New Alert
 		</button>
 	</header>
@@ -207,61 +230,10 @@
 	
 	{#if alerts.length === 0}
 		<div class="card p-8 text-center">
-			<p class="text-surface-600-300-token mb-4">No alerts configured yet.</p>
-			<button class="btn variant-filled-primary" onclick={() => showNewAlert = true}>
+			<p class="text-surface-400 mb-4">No alerts configured yet.</p>
+			<button class="btn variant-filled-primary" onclick={showNewAlertModal}>
 				Create Your First Alert
 			</button>
-		</div>
-	{/if}
-	
-	<!-- New Alert Modal -->
-	{#if showNewAlert}
-		<!-- svelte-ignore a11y_click_events_have_key_events a11y_interactive_supports_focus -->
-		<div class="fixed inset-0 bg-surface-backdrop-token flex items-center justify-center z-50 p-4" onclick={() => showNewAlert = false} role="dialog" aria-modal="true" aria-labelledby="modal-title">
-			<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-			<div class="card p-6 w-full max-w-md" onclick={(e) => e.stopPropagation()}>
-				<h2 id="modal-title" class="h3 mb-6">Create New Alert</h2>
-				
-				<form onsubmit={(e) => { e.preventDefault(); createAlert(); }} class="space-y-4">
-					<label class="label">
-						<span>Alert Type</span>
-						<select class="select" bind:value={newAlertType}>
-							<option value="technical">Technical Indicator</option>
-							<option value="broker">Broker Flow</option>
-							<option value="wyckoff">Wyckoff Pattern</option>
-							<option value="price">Price Target</option>
-						</select>
-					</label>
-					
-					<label class="label">
-						<span>Alert Name</span>
-						<input type="text" class="input" placeholder="My Alert" bind:value={newAlertName} />
-					</label>
-					
-					<fieldset>
-						<legend class="text-sm text-surface-500 mb-2">Notification Channels</legend>
-						<div class="flex gap-4">
-							<label class="flex items-center gap-2">
-								<input type="checkbox" class="checkbox" bind:checked={newAlertChannels.telegram} />
-								<span>Telegram</span>
-							</label>
-							<label class="flex items-center gap-2">
-								<input type="checkbox" class="checkbox" bind:checked={newAlertChannels.email} />
-								<span>Email</span>
-							</label>
-							<label class="flex items-center gap-2">
-								<input type="checkbox" class="checkbox" bind:checked={newAlertChannels.push} />
-								<span>Push</span>
-							</label>
-						</div>
-					</fieldset>
-					
-					<div class="flex justify-end gap-2 pt-4">
-						<button type="button" class="btn variant-ghost-surface" onclick={() => showNewAlert = false}>Cancel</button>
-						<button type="submit" class="btn variant-filled-primary">Create Alert</button>
-					</div>
-				</form>
-			</div>
 		</div>
 	{/if}
 </div>

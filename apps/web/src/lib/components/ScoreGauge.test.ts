@@ -10,25 +10,26 @@ describe('ScoreGauge', () => {
     expect(screen.getByText('Test Score')).toBeInTheDocument();
   });
 
-  it('shows green color for high scores (>=70)', () => {
+  it('shows success color for high scores (>=70)', () => {
     const { container } = render(ScoreGauge, { props: { score: 80, label: 'Score' } });
     
-    const circle = container.querySelector('circle.stroke-green-500');
-    expect(circle).toBeInTheDocument();
+    // ProgressRadial applies stroke class to SVG circle
+    const scoreText = container.querySelector('.text-success-500');
+    expect(scoreText).toBeInTheDocument();
   });
 
-  it('shows yellow color for medium scores (50-69)', () => {
+  it('shows warning color for medium scores (50-69)', () => {
     const { container } = render(ScoreGauge, { props: { score: 55, label: 'Score' } });
     
-    const circle = container.querySelector('circle.stroke-yellow-500');
-    expect(circle).toBeInTheDocument();
+    const scoreText = container.querySelector('.text-warning-500');
+    expect(scoreText).toBeInTheDocument();
   });
 
-  it('shows red color for low scores (<50)', () => {
+  it('shows error color for low scores (<50)', () => {
     const { container } = render(ScoreGauge, { props: { score: 30, label: 'Score' } });
     
-    const circle = container.querySelector('circle.stroke-red-500');
-    expect(circle).toBeInTheDocument();
+    const scoreText = container.querySelector('.text-error-500');
+    expect(scoreText).toBeInTheDocument();
   });
 
   it('uses default values when not provided', () => {
@@ -43,7 +44,8 @@ describe('ScoreGauge', () => {
   it('applies the correct size class', () => {
     const { container } = render(ScoreGauge, { props: { score: 50, size: 'lg' } });
     
-    const wrapper = container.querySelector('.w-32.h-32');
-    expect(wrapper).toBeInTheDocument();
+    // Size class is applied via the width prop to ProgressRadial
+    const progressRadial = container.querySelector('.w-28');
+    expect(progressRadial).toBeInTheDocument();
   });
 });

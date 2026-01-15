@@ -1,3 +1,65 @@
+/* Import fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Base layer customizations */
+@layer base {
+  body {
+    @apply font-sans antialiased;
+  }
+  
+  /* Monospace for numbers in financial data */
+  .font-tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Component layer customizations */
+@layer components {
+  /* Financial data specific styles */
+  .price-up {
+    @apply text-success-500;
+  }
+  
+  .price-down {
+    @apply text-error-500;
+  }
+  
+  .price-neutral {
+    @apply text-surface-400;
+  }
+  
+  /* Score badges */
+  .score-high {
+    @apply bg-success-500/20 text-success-700 dark:text-success-400;
+  }
+  
+  .score-medium {
+    @apply bg-warning-500/20 text-warning-700 dark:text-warning-400;
+  }
+  
+  .score-low {
+    @apply bg-error-500/20 text-error-700 dark:text-error-400;
+  }
+  
+  /* Card hover effect for interactive cards */
+  .card-interactive {
+    @apply transition-all duration-200 hover:ring-2 hover:ring-primary-500/50 cursor-pointer;
+  }
+  
+  /* Data grid for stock metrics */
+  .data-grid {
+    @apply grid gap-4 text-sm;
+  }
+  
+  .data-grid dt {
+    @apply text-surface-500 dark:text-surface-400;
+  }
+  
+  .data-grid dd {
+    @apply font-medium font-tabular;
+  }
+}
