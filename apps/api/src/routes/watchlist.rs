@@ -15,7 +15,7 @@ pub fn watchlist_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(get_watchlist))
         .route("/", post(add_to_watchlist))
-        .route("/{symbol}", delete(remove_from_watchlist))
+        .route("/:symbol", delete(remove_from_watchlist))
 }
 
 async fn get_watchlist(

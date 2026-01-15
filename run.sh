@@ -160,7 +160,7 @@ run_all() {
     
     echo -e "\n${GREEN}Services running:${NC}"
     echo -e "  Frontend: ${BLUE}http://localhost:5173${NC}"
-    echo -e "  API:      ${BLUE}http://localhost:3000${NC}"
+    echo -e "  API:      ${BLUE}http://localhost:8080${NC}"
     echo -e "  Postgres: ${BLUE}localhost:5432${NC}"
     echo -e "  Redis:    ${BLUE}localhost:6379${NC}"
     echo ""

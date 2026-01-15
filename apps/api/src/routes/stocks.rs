@@ -14,10 +14,11 @@ use std::sync::Arc;
 pub fn stock_routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(list_stocks))
-        .route("/{symbol}", get(get_stock))
-        .route("/{symbol}/prices", get(get_stock_prices))
-        .route("/{symbol}/score", get(get_stock_score))
         .route("/scores/top", get(get_top_scores))
+        .route("/:symbol", get(get_stock))
+        .route("/:symbol/prices", get(get_stock_prices))
+        .route("/:symbol/score", get(get_stock_score))
+        .route("/:symbol/fundamentals", get(get_stock_fundamentals))
 }
 
 #[derive(Debug, Deserialize)]
@@ -75,17 +76,26 @@ async fn get_stock(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<Json<StockRow>, (axum::http::StatusCode, String)> {
-    let stock = repositories::stocks::get_stock_by_symbol(&state.db, &symbol.to_uppercase())
+    tracing::debug!("get_stock called with symbol: {}", symbol);
+    let upper_symbol = symbol.to_uppercase();
+    tracing::debug!("Looking up stock: {}", upper_symbol);
+    
+    let stock = repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| {
-            (
-                axum::http::StatusCode::NOT_FOUND,
-                "Stock not found".to_string(),
-            )
+        .map_err(|e| {
+            tracing::error!("Database error: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
-
-    Ok(Json(stock))
+    
+    tracing::debug!("Stock query result: {:?}", stock.is_some());
+    
+    stock.ok_or_else(|| {
+        tracing::debug!("Stock not found: {}", upper_symbol);
+        (
+            axum::http::StatusCode::NOT_FOUND,
+            format!("Stock not found: {}", upper_symbol),
+        )
+    }).map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,4 +149,43 @@ async fn get_top_scores(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(scores))
+}
+
+#[derive(Debug, Serialize)]
+pub struct FundamentalData {
+    pub symbol: String,
+    pub pe_ratio: Option<f64>,
+    pub pb_ratio: Option<f64>,
+    pub ps_ratio: Option<f64>,
+    pub ev_ebitda: Option<f64>,
+    pub roe: Option<f64>,
+    pub roa: Option<f64>,
+    pub profit_margin: Option<f64>,
+    pub debt_to_equity: Option<f64>,
+    pub current_ratio: Option<f64>,
+    pub dcf_intrinsic_value: Option<f64>,
+    pub dcf_margin_of_safety: Option<f64>,
+    pub sector_avg_pe: Option<f64>,
+    pub sector_avg_pb: Option<f64>,
+}
+
+async fn get_stock_fundamentals(
+    _user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<Json<Option<FundamentalData>>, (axum::http::StatusCode, String)> {
+    // Verify stock exists first
+    let _stock = repositories::stocks::get_stock_by_symbol(&state.db, &symbol.to_uppercase())
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                "Stock not found".to_string(),
+            )
+        })?;
+
+    // TODO: Implement actual fundamental data retrieval
+    // For now, return None (no fundamental data available)
+    Ok(Json(None))
 }
