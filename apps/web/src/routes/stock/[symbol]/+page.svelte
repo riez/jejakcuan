@@ -259,18 +259,26 @@
           <FundamentalMetrics data={fundamentals} currentPrice={latestPrice?.close ?? 0} />
         </div>
 
-        {#if score}
+        {#if score && fundamentals}
+          {@const peScore = fundamentals.pe_ratio ? (fundamentals.pe_ratio < 15 ? 80 : fundamentals.pe_ratio < 25 ? 60 : 40) : 50}
+          {@const pbScore = fundamentals.pb_ratio ? (fundamentals.pb_ratio < 1 ? 85 : fundamentals.pb_ratio < 2 ? 70 : 50) : 50}
+          {@const roeScore = fundamentals.roe ? (fundamentals.roe > 15 ? 80 : fundamentals.roe > 10 ? 65 : 45) : 50}
+          {@const roaScore = fundamentals.roa ? (fundamentals.roa > 10 ? 75 : fundamentals.roa > 5 ? 60 : 45) : 50}
           <div class="card p-6">
             <h3 class="h3 mb-4">Fundamental Score Breakdown</h3>
             <ScoreBreakdown
               components={[
-                { name: 'Valuation', score: 75, weight: 0.35, signals: ['P/E below sector average'] },
-                { name: 'DCF', score: 80, weight: 0.25, signals: ['20% margin of safety'] },
-                { name: 'Quality', score: 70, weight: 0.2, signals: ['Good ROE (18%)'] },
-                { name: 'Health', score: 85, weight: 0.2, signals: ['Low leverage'] }
+                { name: 'Valuation (P/E)', score: peScore, weight: 0.3, signals: [fundamentals.pe_ratio ? `P/E: ${fundamentals.pe_ratio.toFixed(1)}` : 'No P/E data'] },
+                { name: 'Book Value (P/B)', score: pbScore, weight: 0.25, signals: [fundamentals.pb_ratio ? `P/B: ${fundamentals.pb_ratio.toFixed(2)}` : 'No P/B data'] },
+                { name: 'Profitability (ROE)', score: roeScore, weight: 0.25, signals: [fundamentals.roe ? `ROE: ${fundamentals.roe.toFixed(1)}%` : 'No ROE data'] },
+                { name: 'Efficiency (ROA)', score: roaScore, weight: 0.2, signals: [fundamentals.roa ? `ROA: ${fundamentals.roa.toFixed(1)}%` : 'No ROA data'] }
               ]}
               totalScore={score.fundamental_score}
             />
+          </div>
+        {:else if score}
+          <div class="card p-6 text-center text-surface-500">
+            <p>No fundamental breakdown available</p>
           </div>
         {/if}
 

@@ -1,6 +1,6 @@
 //! Stock repository
 
-use crate::models::StockRow;
+use crate::models::{FinancialsRow, StockRow};
 use sqlx::PgPool;
 
 /// Get all active stocks
@@ -46,5 +46,18 @@ pub async fn upsert_stock(
     .bind(sector)
     .bind(subsector)
     .fetch_one(pool)
+    .await
+}
+
+/// Get latest financials for a stock
+pub async fn get_financials(
+    pool: &PgPool,
+    symbol: &str,
+) -> Result<Option<FinancialsRow>, sqlx::Error> {
+    sqlx::query_as::<_, FinancialsRow>(
+        "SELECT * FROM financials WHERE symbol = $1 ORDER BY period_end DESC LIMIT 1",
+    )
+    .bind(symbol)
+    .fetch_optional(pool)
     .await
 }

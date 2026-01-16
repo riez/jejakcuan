@@ -174,8 +174,10 @@ async fn get_stock_fundamentals(
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<Json<Option<FundamentalData>>, (axum::http::StatusCode, String)> {
+    let upper_symbol = symbol.to_uppercase();
+
     // Verify stock exists first
-    let _stock = repositories::stocks::get_stock_by_symbol(&state.db, &symbol.to_uppercase())
+    let _stock = repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| {
@@ -185,7 +187,31 @@ async fn get_stock_fundamentals(
             )
         })?;
 
-    // TODO: Implement actual fundamental data retrieval
-    // For now, return None (no fundamental data available)
-    Ok(Json(None))
+    // Get latest financials from database
+    let financials = repositories::stocks::get_financials(&state.db, &upper_symbol)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let result = financials.map(|f| {
+        use rust_decimal::prelude::ToPrimitive;
+        FundamentalData {
+            symbol: f.symbol,
+            pe_ratio: f.pe_ratio.and_then(|v| v.to_f64()),
+            pb_ratio: f.pb_ratio.and_then(|v| v.to_f64()),
+            ps_ratio: None,
+            ev_ebitda: f.ev_ebitda.and_then(|v| v.to_f64()),
+            // Convert ROE/ROA from decimal (0.21) to percentage (21.0)
+            roe: f.roe.and_then(|v| v.to_f64().map(|x| x * 100.0)),
+            roa: f.roa.and_then(|v| v.to_f64().map(|x| x * 100.0)),
+            profit_margin: None,
+            debt_to_equity: None,
+            current_ratio: None,
+            dcf_intrinsic_value: None,
+            dcf_margin_of_safety: None,
+            sector_avg_pe: None,
+            sector_avg_pb: None,
+        }
+    });
+
+    Ok(Json(result))
 }
