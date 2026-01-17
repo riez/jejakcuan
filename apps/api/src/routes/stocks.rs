@@ -68,9 +68,6 @@ fn compute_orderflow_inputs_from_ohlcv(
     );
 
     let start_idx = min_len.saturating_sub(ORDERFLOW_TREND_WINDOW);
-    if min_len - start_idx < 2 {
-        return (Some(obi), None);
-    }
 
     let mut series = Vec::with_capacity(min_len - start_idx);
     for idx in start_idx..min_len {
@@ -574,9 +571,10 @@ async fn get_stock_fundamentals(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rust_decimal::prelude::FromPrimitive;
 
     #[test]
-    fn test_compute_orderflow_inputs_from_ohlcv() {
+    fn test_compute_orderflow_inputs_from_ohlcv_happy_path() {
         let highs = vec![dec!(110), dec!(110), dec!(110), dec!(110)];
         let lows = vec![dec!(100), dec!(100), dec!(100), dec!(100)];
         let closes = vec![dec!(101), dec!(103), dec!(106), dec!(109)];
@@ -590,6 +588,69 @@ mod tests {
 
         assert!(ofi_trend.is_some());
         assert!(ofi_trend.unwrap() > Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_compute_orderflow_inputs_from_ohlcv_insufficient_data() {
+        let highs = vec![dec!(110)];
+        let lows = vec![dec!(100)];
+        let closes = vec![dec!(105)];
+        let volumes = vec![1000];
+
+        let (obi, ofi_trend) =
+            compute_orderflow_inputs_from_ohlcv(&highs, &lows, &closes, &volumes);
+
+        assert!(obi.is_none());
+        assert!(ofi_trend.is_none());
+    }
+
+    #[test]
+    fn test_compute_orderflow_inputs_from_ohlcv_mismatched_lengths_uses_min_len() {
+        let highs = vec![dec!(110), dec!(110), dec!(110)];
+        let lows = vec![dec!(100), dec!(100), dec!(100)];
+        let closes = vec![dec!(101), dec!(109), dec!(105)];
+        let volumes = vec![1000, 1000];
+
+        let (obi, ofi_trend) =
+            compute_orderflow_inputs_from_ohlcv(&highs, &lows, &closes, &volumes);
+
+        let expected_obi = calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(109), 1000);
+        let expected_trend = calculate_trend_normalized(&vec![
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(101), 1000),
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(109), 1000),
+        ]);
+
+        assert_eq!(obi, Some(expected_obi));
+        assert_eq!(ofi_trend, Some(expected_trend));
+    }
+
+    #[test]
+    fn test_compute_orderflow_inputs_from_ohlcv_trend_window() {
+        let highs = vec![dec!(110); 25];
+        let lows = vec![dec!(100); 25];
+        let mut closes = vec![dec!(101); 25];
+        for i in 5..25 {
+            closes[i] = dec!(100) + Decimal::from_i32((i - 5) as i32).unwrap();
+        }
+        let volumes = vec![1000; 25];
+
+        let (obi, ofi_trend) =
+            compute_orderflow_inputs_from_ohlcv(&highs, &lows, &closes, &volumes);
+
+        let expected_obi = calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), closes[24], 1000);
+        let mut expected_series = Vec::new();
+        for idx in 5..25 {
+            expected_series.push(calculate_ohlc_imbalance_proxy(
+                dec!(110),
+                dec!(100),
+                closes[idx],
+                1000,
+            ));
+        }
+        let expected_trend = calculate_trend_normalized(&expected_series);
+
+        assert_eq!(obi, Some(expected_obi));
+        assert_eq!(ofi_trend, Some(expected_trend));
     }
 }
 
