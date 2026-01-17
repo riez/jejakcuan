@@ -284,6 +284,15 @@ pub fn calculate_ohlc_imbalance_proxy(
     proxy.clamp(dec!(-1), dec!(1))
 }
 
+pub fn calculate_trend_normalized(series: &[Decimal]) -> Decimal {
+    if series.len() < 2 {
+        return Decimal::ZERO;
+    }
+
+    let trend = series[series.len() - 1] - series[0];
+    trend.clamp(dec!(-1), dec!(1))
+}
+
 /// Calculate Accumulation/Distribution Line
 pub fn calculate_adl(
     highs: &[Decimal],
@@ -598,6 +607,13 @@ mod tests {
             calculate_ohlc_imbalance_proxy(dec!(100), dec!(110), dec!(100), 1000),
             Decimal::ZERO
         );
+    }
+
+    #[test]
+    fn test_orderflow_trend_proxy() {
+        let series = vec![dec!(-0.2), dec!(0.0), dec!(0.3)];
+        let trend = calculate_trend_normalized(&series);
+        assert!(trend > Decimal::ZERO);
     }
 
     #[test]
