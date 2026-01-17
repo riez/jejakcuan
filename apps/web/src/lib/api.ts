@@ -1,9 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-
-interface LoginRequest {
-  username: string;
-  password: string;
+export function resolveApiBase(viteApiUrl: string | undefined | null): string {
+  return (viteApiUrl ?? '').replace(/\/+$/, '');
 }
+
+const API_BASE = resolveApiBase((import.meta as any).env?.VITE_API_URL);
 
 interface LoginResponse {
   token: string;

@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { api } from './api';
+
+type ApiClient = typeof import('./api').api;
+
+let api: ApiClient;
+
+async function loadApi(viteApiUrl: string | undefined): Promise<ApiClient> {
+  vi.resetModules();
+
+  const env = (import.meta as any).env ?? ((import.meta as any).env = {});
+  if (viteApiUrl === undefined) {
+    delete env.VITE_API_URL;
+  } else {
+    env.VITE_API_URL = viteApiUrl;
+  }
+
+  const mod = await import('./api');
+  return mod.api;
+}
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -38,12 +55,32 @@ function createMockResponse(options: {
 }
 
 describe('API Client', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockFetch.mockReset();
     localStorageMock.getItem.mockReset();
     localStorageMock.setItem.mockReset();
     localStorageMock.removeItem.mockReset();
+
+    api = await loadApi('http://localhost:8080');
     api.setToken(null);
+  });
+
+  describe('base URL resolution', () => {
+    it('defaults to same-origin when VITE_API_URL is unset', async () => {
+      vi.resetModules();
+      const { resolveApiBase } = await import('./api');
+
+      expect(resolveApiBase(undefined)).toBe('');
+      expect(resolveApiBase(null)).toBe('');
+    });
+
+    it('trims trailing slashes from VITE_API_URL', async () => {
+      vi.resetModules();
+      const { resolveApiBase } = await import('./api');
+
+      expect(resolveApiBase('http://localhost:8080/')).toBe('http://localhost:8080');
+      expect(resolveApiBase('http://localhost:8080///')).toBe('http://localhost:8080');
+    });
   });
 
   describe('fetch handling', () => {
