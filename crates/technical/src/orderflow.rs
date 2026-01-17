@@ -276,13 +276,12 @@ pub fn calculate_ohlc_imbalance_proxy(
         return Decimal::ZERO;
     }
 
-    let range = high - low;
-    if range == Decimal::ZERO {
+    if high < low {
         return Decimal::ZERO;
     }
 
-    let proxy = ((close - low) - (high - close)) / range;
-    proxy.max(dec!(-1)).min(dec!(1))
+    let proxy = money_flow_multiplier(high, low, close);
+    proxy.clamp(dec!(-1), dec!(1))
 }
 
 /// Calculate Accumulation/Distribution Line
@@ -563,6 +562,42 @@ mod tests {
 
         let obi = calculate_ohlc_imbalance_proxy(dec!(100), dec!(100), dec!(100), 1000);
         assert_eq!(obi, Decimal::ZERO);
+
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(105), 0),
+            Decimal::ZERO
+        );
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(105), -1),
+            Decimal::ZERO
+        );
+
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(110), 1000),
+            dec!(1)
+        );
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(100), 1000),
+            dec!(-1)
+        );
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(105), 1000),
+            dec!(0)
+        );
+
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(111), 1000),
+            dec!(1)
+        );
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(99), 1000),
+            dec!(-1)
+        );
+
+        assert_eq!(
+            calculate_ohlc_imbalance_proxy(dec!(100), dec!(110), dec!(100), 1000),
+            Decimal::ZERO
+        );
     }
 
     #[test]
