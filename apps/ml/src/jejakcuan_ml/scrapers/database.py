@@ -339,6 +339,25 @@ class DatabaseClient:
                 return result["latest"]  # type: ignore[no-any-return]
             return None
 
+    def get_earliest_price_date(self, symbol: str) -> date | None:
+        """Get the earliest price date for a symbol.
+
+        Args:
+            symbol: Stock symbol
+
+        Returns:
+            Earliest price date or None
+        """
+        with self.cursor() as cur:
+            cur.execute(
+                "SELECT MIN(time)::date as earliest FROM stock_prices WHERE symbol = %s",
+                (symbol,),
+            )
+            result = cur.fetchone()
+            if result and result.get("earliest") is not None:
+                return result["earliest"]  # type: ignore[no-any-return]
+            return None
+
     def get_stock_count(self) -> int:
         """Get total number of stocks.
 

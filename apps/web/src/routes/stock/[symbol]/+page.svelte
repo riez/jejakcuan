@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
   import { TabGroup, Tab, ProgressRadial } from '@skeletonlabs/skeleton';
-  import { api, type Stock, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
+  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
   import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
   let symbol = $derived($page.params.symbol ?? '');
@@ -10,6 +10,7 @@
   let score = $state<StockScore | null>(null);
   let prices = $state<StockPrice[]>([]);
   let fundamentals = $state<FundamentalData | null>(null);
+  let freshness = $state<StockFreshness | null>(null);
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
@@ -23,12 +24,13 @@
     }
 
     try {
-      const [stockData, scoreData, priceData, watchlistData, fundamentalData] = await Promise.all([
+      const [stockData, scoreData, priceData, watchlistData, fundamentalData, freshnessData] = await Promise.all([
         api.getStock(symbol),
         api.getStockScore(symbol),
         api.getStockPrices(symbol, 60),
         api.getWatchlist(),
-        api.getFundamentals(symbol)
+        api.getFundamentals(symbol),
+        api.getStockFreshness(symbol)
       ]);
 
       stock = stockData;
@@ -36,12 +38,26 @@
       prices = priceData;
       inWatchlist = watchlistData.some((w) => w.symbol === symbol);
       fundamentals = fundamentalData;
+      freshness = freshnessData;
     } catch (e) {
       error = (e as Error).message;
     } finally {
       isLoading = false;
     }
   });
+
+  const STALE_DAYS = 7;
+
+  function isStale(asOf: string | null | undefined): boolean {
+    if (!asOf) return true;
+    const ms = Date.now() - new Date(asOf).getTime();
+    return ms > STALE_DAYS * 24 * 60 * 60 * 1000;
+  }
+
+  function formatAsOf(asOf: string | null | undefined): string {
+    if (!asOf) return '-';
+    return new Date(asOf).toLocaleString();
+  }
 
   async function toggleWatchlist() {
     if (!symbol) return;
@@ -117,6 +133,54 @@
     <aside class="alert variant-filled-error">
       <p>{error}</p>
     </aside>
+  {/if}
+
+  {#if freshness}
+    {@const stalePrices = isStale(freshness.prices_as_of)}
+    {@const staleBroker = isStale(freshness.broker_flow_as_of)}
+    {@const staleFinancials = isStale(freshness.financials_as_of)}
+    {@const staleScores = isStale(freshness.scores_as_of)}
+    <div class="card p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="h3">Data Freshness</h3>
+        <span class="badge {stalePrices || staleBroker || staleFinancials || staleScores ? 'variant-soft-warning' : 'variant-soft-success'}">
+          {stalePrices || staleBroker || staleFinancials || staleScores ? `Stale (>${STALE_DAYS}d)` : 'Fresh'}
+        </span>
+      </div>
+
+      {#if stalePrices || staleBroker || staleFinancials || staleScores}
+        <div class="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-sm">
+          Some data is older than {STALE_DAYS} days or missing. Consider re-running scrapers (prices/broker flow) and recomputing scores.
+        </div>
+      {/if}
+
+      <dl class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Prices</dt>
+          <dd class="font-medium {stalePrices ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.prices_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Broker Flow</dt>
+          <dd class="font-medium {staleBroker ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.broker_flow_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Fundamentals</dt>
+          <dd class="font-medium {staleFinancials ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.financials_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Scores</dt>
+          <dd class="font-medium {staleScores ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.scores_as_of)}
+          </dd>
+        </div>
+      </dl>
+    </div>
   {/if}
 
   {#if isLoading}

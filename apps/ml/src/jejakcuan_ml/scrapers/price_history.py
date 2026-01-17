@@ -83,15 +83,28 @@ class PriceHistoryScraper(BaseScraper):
             try:
                 # Check latest price date in database
                 latest_date = self.db.get_latest_price_date(symbol)
+                desired_start = date.today() - timedelta(days=self._days)
+
                 if latest_date:
-                    # Only fetch missing days
-                    start_date = latest_date + timedelta(days=1)
-                    if start_date > date.today():
-                        logger.debug(f"{symbol} already up to date")
-                        continue
+                    earliest_date = self.db.get_earliest_price_date(symbol)
+                    needs_backfill = earliest_date is None or earliest_date > desired_start
+
+                    if needs_backfill:
+                        start_date = desired_start
+                        if earliest_date is not None:
+                            logger.info(
+                                f"Backfilling {symbol} price history from {desired_start} "
+                                f"(earliest existing: {earliest_date})"
+                            )
+                    else:
+                        # Only fetch missing days
+                        start_date = latest_date + timedelta(days=1)
+                        if start_date > date.today():
+                            logger.debug(f"{symbol} already up to date")
+                            continue
                 else:
                     # Fetch full history
-                    start_date = date.today() - timedelta(days=self._days)
+                    start_date = desired_start
 
                 end_date = date.today()
 

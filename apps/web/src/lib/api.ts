@@ -29,6 +29,12 @@ interface StockScore {
   ml_score: number;
 }
 
+interface RecomputeScoresResponse {
+  computed: number;
+  skipped: number;
+  errors: number;
+}
+
 interface StockPrice {
   time: string;
   symbol: string;
@@ -37,6 +43,14 @@ interface StockPrice {
   low: number;
   close: number;
   volume: number;
+}
+
+interface StockFreshness {
+  symbol: string;
+  prices_as_of: string | null;
+  broker_flow_as_of: string | null;
+  financials_as_of: string | null;
+  scores_as_of: string | null;
 }
 
 interface WatchlistItem {
@@ -67,8 +81,15 @@ interface FundamentalData {
 // Analysis Types
 interface BrokerInfo {
   code: string;
+  name: string | null;
   avg_price: number;
   category: string;
+  buy_volume: number;
+  sell_volume: number;
+  net_volume: number;
+  buy_value: number;
+  sell_value: number;
+  net_value: number;
 }
 
 interface PriceRange {
@@ -213,6 +234,26 @@ class ApiClient {
     return JSON.parse(text) as T;
   }
 
+  private async fetchWithTimeout<T>(
+    path: string,
+    options: RequestInit = {},
+    timeoutMs: number = 20000
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await this.fetch<T>(path, { ...options, signal: controller.signal });
+    } catch (error) {
+      const err = error as any;
+      if (err?.name === 'AbortError') {
+        throw new Error('Request timeout');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
   // Auth
   async login(username: string, password: string): Promise<LoginResponse> {
     const response = await this.fetch<LoginResponse>('/api/auth/login', {
@@ -250,16 +291,33 @@ class ApiClient {
 
   async getStockPrices(symbol: string, days?: number): Promise<StockPrice[]> {
     const params = days ? `?days=${days}` : '';
-    return this.fetch(`/api/stocks/${symbol}/prices${params}`);
+    const raw = await this.fetch<any[]>(`/api/stocks/${symbol}/prices${params}`);
+    return raw.map((p) => ({
+      time: String(p.time),
+      symbol: String(p.symbol ?? symbol).toUpperCase(),
+      open: Number(p.open),
+      high: Number(p.high),
+      low: Number(p.low),
+      close: Number(p.close),
+      volume: Number(p.volume),
+    }));
   }
 
   async getStockScore(symbol: string): Promise<StockScore | null> {
     return this.fetch(`/api/stocks/${symbol}/score`);
   }
 
+  async getStockFreshness(symbol: string): Promise<StockFreshness> {
+    return this.fetch(`/api/stocks/${symbol}/freshness`);
+  }
+
   async getTopScores(limit?: number): Promise<StockScore[]> {
     const params = limit ? `?limit=${limit}` : '';
     return this.fetch(`/api/stocks/scores/top${params}`);
+  }
+
+  async recomputeScores(): Promise<RecomputeScoresResponse> {
+    return this.fetch('/api/stocks/scores/recompute', { method: 'POST' });
   }
 
   // Watchlist
@@ -295,7 +353,7 @@ class ApiClient {
   async getFullAnalysis(symbol: string, days?: number): Promise<FullAnalysisResponse | null> {
     try {
       const params = days ? `?days=${days}` : '';
-      return await this.fetch<FullAnalysisResponse>(`/api/analysis/${symbol}/analysis${params}`);
+      return await this.fetchWithTimeout<FullAnalysisResponse>(`/api/analysis/${symbol}/analysis${params}`);
     } catch (error) {
       if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
         return null;
@@ -307,7 +365,7 @@ class ApiClient {
   async getTechnicals(symbol: string, days?: number): Promise<TechnicalResponse | null> {
     try {
       const params = days ? `?days=${days}` : '';
-      return await this.fetch<TechnicalResponse>(`/api/analysis/${symbol}/technicals${params}`);
+      return await this.fetchWithTimeout<TechnicalResponse>(`/api/analysis/${symbol}/technicals${params}`);
     } catch (error) {
       if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
         return null;
@@ -319,7 +377,7 @@ class ApiClient {
   async getBrokerFlow(symbol: string, days?: number): Promise<BrokerSummaryResponse | null> {
     try {
       const params = days ? `?days=${days}` : '';
-      return await this.fetch<BrokerSummaryResponse>(`/api/analysis/${symbol}/broker-flow${params}`);
+      return await this.fetchWithTimeout<BrokerSummaryResponse>(`/api/analysis/${symbol}/broker-flow${params}`);
     } catch (error) {
       if (error instanceof Error && (error.message.includes('404') || error.message.includes('400'))) {
         return null;
@@ -334,6 +392,7 @@ export type {
   Stock, 
   StockScore, 
   StockPrice, 
+  StockFreshness,
   WatchlistItem, 
   LoginResponse, 
   FundamentalData,
@@ -347,5 +406,6 @@ export type {
   IchimokuInfo,
   TASummary,
   BollingerResponse,
-  StrategyResponse
+  StrategyResponse,
+  RecomputeScoresResponse
 };

@@ -4,10 +4,25 @@
  */
 
 export interface BrokerSummary {
-  bigBuyers: { code: string; avgPrice: number }[];
-  bigSellers: { code: string; avgPrice: number }[];
+  bigBuyers: BrokerInfo[];
+  bigSellers: BrokerInfo[];
   netStatus: 'accumulation' | 'distribution' | 'balanced';
   priceRange: { low: number; high: number };
+  foreignNet?: number;
+  domesticNet?: number;
+}
+
+export interface BrokerInfo {
+  code: string;
+  name?: string | null;
+  category?: string;
+  avgPrice: number;
+  buyVolume?: number;
+  sellVolume?: number;
+  netVolume?: number;
+  buyValue?: number;
+  sellValue?: number;
+  netValue?: number;
 }
 
 export interface TechnicalAnalysis {

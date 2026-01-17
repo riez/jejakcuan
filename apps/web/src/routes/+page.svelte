@@ -46,8 +46,15 @@
     try {
       const stocksResponse = await api.getStocks();
       stocks = stocksResponse.stocks;
-      const scoresResponse = await api.getTopScores(500);
+      let scoresResponse = await api.getTopScores(500);
       scores = new Map(scoresResponse.map((s) => [s.symbol, s]));
+
+      // Auto-populate missing scores so screener columns aren't mostly "-".
+      if (scoresResponse.length < stocks.length) {
+        await api.recomputeScores();
+        scoresResponse = await api.getTopScores(500);
+        scores = new Map(scoresResponse.map((s) => [s.symbol, s]));
+      }
     } catch (e) {
       error = (e as Error).message;
     } finally {

@@ -6,6 +6,7 @@
    */
 
   import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion } from './StockAnalysis.types';
+  import type { StockFreshness } from '$lib/api';
 
   let { 
     symbol = '',
@@ -13,6 +14,7 @@
     technical = null as TechnicalAnalysis | null,
     valuation = null as ValuationEstimate | null,
     conclusion = null as OverallConclusion | null,
+    freshness = null as StockFreshness | null,
     language = 'en' as 'en' | 'id'
   } = $props();
 
@@ -104,12 +106,50 @@
 
   let labels = $derived(t[language]);
 
+  const STALE_DAYS = 7;
+
+  function isStale(asOf: string | null | undefined): boolean {
+    if (!asOf) return true;
+    const ms = Date.now() - new Date(asOf).getTime();
+    return ms > STALE_DAYS * 24 * 60 * 60 * 1000;
+  }
+
+  function formatAsOf(asOf: string | null | undefined): string {
+    if (!asOf) return '-';
+    return new Date(asOf).toLocaleString();
+  }
+
+  const notableBrokers = new Set([
+    // Example broker initials users often track
+    'XL',
+    // Seeded broker codes in DB
+    'BK', 'KZ', 'CS', 'AK', 'GW', 'DP', 'RX', 'ZP',
+    'CC', 'SQ', 'NI', 'OD', 'HP', 'KI', 'DX', 'IF', 'LG'
+  ]);
+
   function formatPrice(price: number): string {
     return price.toLocaleString('id-ID');
   }
 
   function formatRange(low: number, high: number): string {
     return `${formatPrice(low)}–${formatPrice(high)}`;
+  }
+
+  function formatIdrCompact(value: number): string {
+    const abs = Math.abs(value);
+    const sign = value < 0 ? '-' : '+';
+    if (abs >= 1e12) return `${sign}${(abs / 1e12).toFixed(2)}T`;
+    if (abs >= 1e9) return `${sign}${(abs / 1e9).toFixed(2)}B`;
+    if (abs >= 1e6) return `${sign}${(abs / 1e6).toFixed(2)}M`;
+    return `${sign}${abs.toFixed(0)}`;
+  }
+
+  function brokerLabel(b: { code: string; name?: string | null; category?: string; netValue?: number }): string {
+    const parts = [b.code];
+    if (b.name) parts.push(b.name);
+    if (b.category) parts.push(b.category);
+    if (typeof b.netValue === 'number') parts.push(formatIdrCompact(b.netValue));
+    return parts.join(' • ');
   }
 
   function getNetStatusLabel(status: string): string {
@@ -138,6 +178,46 @@
 </script>
 
 <div class="space-y-6">
+  {#if freshness}
+    {@const stalePrices = isStale(freshness.prices_as_of)}
+    {@const staleBroker = isStale(freshness.broker_flow_as_of)}
+    {@const staleFinancials = isStale(freshness.financials_as_of)}
+    {@const staleScores = isStale(freshness.scores_as_of)}
+    <div class="card p-4">
+      <div class="flex items-center justify-between gap-2 flex-wrap">
+        <h3 class="h4 text-slate-900 dark:text-slate-100">Data Freshness</h3>
+        <span class="badge {stalePrices || staleBroker || staleFinancials || staleScores ? 'variant-soft-warning' : 'variant-soft-success'}">
+          {stalePrices || staleBroker || staleFinancials || staleScores ? `Stale (>${STALE_DAYS}d)` : 'Fresh'}
+        </span>
+      </div>
+      <dl class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Prices</dt>
+          <dd class="font-medium {stalePrices ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.prices_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Broker Flow</dt>
+          <dd class="font-medium {staleBroker ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.broker_flow_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Fundamentals</dt>
+          <dd class="font-medium {staleFinancials ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.financials_as_of)}
+          </dd>
+        </div>
+        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
+          <dt class="text-slate-600 dark:text-slate-300">Scores</dt>
+          <dd class="font-medium {staleScores ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
+            {formatAsOf(freshness.scores_as_of)}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  {/if}
   <!-- Broker Summary -->
   {#if brokerSummary}
     <div class="card p-4">
@@ -145,22 +225,62 @@
       <div class="space-y-3 text-sm">
         <div class="flex flex-wrap gap-2">
           <span class="font-semibold text-slate-700 dark:text-slate-300">{labels.bigBuyers}:</span>
-          <span class="text-emerald-600 dark:text-emerald-400 font-medium">
-            {brokerSummary.bigBuyers.map(b => b.code).join(', ')}
-          </span>
+          <div class="flex flex-wrap gap-2">
+            {#each brokerSummary.bigBuyers as b (b.code)}
+              <span
+                class="badge variant-soft-secondary {notableBrokers.has(b.code) ? 'ring-2 ring-primary-500/40' : ''}"
+                title={brokerLabel(b)}
+              >
+                <span class="text-emerald-700 dark:text-emerald-400 font-medium">{b.code}</span>
+                {#if typeof b.netValue === 'number'}
+                  <span class="ml-1 text-slate-600 dark:text-slate-400">{formatIdrCompact(b.netValue)}</span>
+                {/if}
+              </span>
+            {/each}
+          </div>
           <span class="text-slate-600 dark:text-slate-400">
             → {labels.accumulationAt} {formatRange(brokerSummary.priceRange.low, brokerSummary.priceRange.high)}
           </span>
         </div>
         <div class="flex flex-wrap gap-2">
           <span class="font-semibold text-slate-700 dark:text-slate-300">{labels.bigSellers}:</span>
-          <span class="text-rose-600 dark:text-rose-400 font-medium">
-            {brokerSummary.bigSellers.map(b => b.code).join(', ')}
-          </span>
+          <div class="flex flex-wrap gap-2">
+            {#each brokerSummary.bigSellers as b (b.code)}
+              <span
+                class="badge variant-soft-secondary {notableBrokers.has(b.code) ? 'ring-2 ring-primary-500/40' : ''}"
+                title={brokerLabel(b)}
+              >
+                <span class="text-rose-700 dark:text-rose-400 font-medium">{b.code}</span>
+                {#if typeof b.netValue === 'number'}
+                  <span class="ml-1 text-slate-600 dark:text-slate-400">{formatIdrCompact(b.netValue)}</span>
+                {/if}
+              </span>
+            {/each}
+          </div>
           <span class="text-slate-600 dark:text-slate-400">
             → {labels.distributionAt} {formatRange(brokerSummary.priceRange.low, brokerSummary.priceRange.high)}
           </span>
         </div>
+        {#if typeof brokerSummary.foreignNet === 'number' || typeof brokerSummary.domesticNet === 'number'}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {#if typeof brokerSummary.foreignNet === 'number'}
+              <div class="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                <span class="text-slate-600 dark:text-slate-400">Foreign net:</span>
+                <span class="ml-2 font-medium {brokerSummary.foreignNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}">
+                  {formatIdrCompact(brokerSummary.foreignNet)}
+                </span>
+              </div>
+            {/if}
+            {#if typeof brokerSummary.domesticNet === 'number'}
+              <div class="p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                <span class="text-slate-600 dark:text-slate-400">Domestic net:</span>
+                <span class="ml-2 font-medium {brokerSummary.domesticNet >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}">
+                  {formatIdrCompact(brokerSummary.domesticNet)}
+                </span>
+              </div>
+            {/if}
+          </div>
+        {/if}
         <div class="flex flex-wrap gap-2">
           <span class="font-semibold text-slate-700 dark:text-slate-300">{labels.netting}:</span>
           <span class="{brokerSummary.netStatus === 'accumulation' ? 'text-emerald-600 dark:text-emerald-400' : 

@@ -36,8 +36,15 @@ pub fn analysis_routes() -> Router<Arc<AppState>> {
 #[derive(Debug, Serialize)]
 pub struct BrokerInfo {
     pub code: String,
+    pub name: Option<String>,
     pub avg_price: f64,
     pub category: String,
+    pub buy_volume: i64,
+    pub sell_volume: i64,
+    pub net_volume: i64,
+    pub buy_value: f64,
+    pub sell_value: f64,
+    pub net_value: f64,
 }
 
 #[derive(Debug, Serialize)]
@@ -318,29 +325,122 @@ async fn get_technical_analysis(
 
 async fn get_broker_flow_internal(
     state: &AppState,
-    _symbol: &str,
-    _days: i32,
+    symbol: &str,
+    days: i32,
 ) -> Result<BrokerSummaryResponse, (axum::http::StatusCode, String)> {
-    // Note: This would need a broker_summary table/repository
-    // For now, return a structured response indicating no data
-    // The frontend will handle this gracefully
+    let from = Utc::now() - Duration::days(days as i64);
+    let to = Utc::now();
 
-    // Check if we have broker data in the database
-    // This is a placeholder - in production, you would fetch from a broker_summary table
-    let _from = Utc::now() - Duration::days(_days as i64);
+    let aggregates = repositories::broker_summary::get_broker_flow_aggregates(&state.db, symbol, from, to)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Return a response indicating broker data needs to be populated
-    // The actual implementation would query the database for broker summaries
+    let price_range = repositories::broker_summary::get_price_range(&state.db, symbol, from, to)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let mut foreign_net = 0.0;
+    let mut domestic_net = 0.0;
+    let mut total_net = 0.0;
+    let mut total_traded = 0.0;
+
+    for a in &aggregates {
+        let buy_value = a.buy_value.to_f64().unwrap_or(0.0);
+        let sell_value = a.sell_value.to_f64().unwrap_or(0.0);
+        let net_value = a.net_value.to_f64().unwrap_or(0.0);
+
+        total_traded += buy_value + sell_value;
+        total_net += net_value;
+
+        if a.category == "foreign_institutional" {
+            foreign_net += net_value;
+        } else {
+            domestic_net += net_value;
+        }
+    }
+
+    let net_status = if total_traded <= 0.0 {
+        "balanced"
+    } else {
+        let net_ratio = (total_net / total_traded).abs();
+        if net_ratio < 0.05 {
+            "balanced"
+        } else if total_net > 0.0 {
+            "accumulation"
+        } else {
+            "distribution"
+        }
+    };
+
+    let big_buyers: Vec<BrokerInfo> = aggregates
+        .iter()
+        .filter(|a| a.net_value > Decimal::ZERO)
+        .take(5)
+        .map(|a| {
+            let buy_value = a.buy_value.to_f64().unwrap_or(0.0);
+            let sell_value = a.sell_value.to_f64().unwrap_or(0.0);
+            let net_value = a.net_value.to_f64().unwrap_or(0.0);
+            let avg_price = if a.buy_volume > 0 {
+                buy_value / a.buy_volume as f64
+            } else {
+                0.0
+            };
+
+            BrokerInfo {
+                code: a.broker_code.clone(),
+                name: a.broker_name.clone(),
+                avg_price,
+                category: a.category.clone(),
+                buy_volume: a.buy_volume,
+                sell_volume: a.sell_volume,
+                net_volume: a.net_volume,
+                buy_value,
+                sell_value,
+                net_value,
+            }
+        })
+        .collect();
+
+    let big_sellers: Vec<BrokerInfo> = aggregates
+        .iter()
+        .rev()
+        .filter(|a| a.net_value < Decimal::ZERO)
+        .take(5)
+        .map(|a| {
+            let buy_value = a.buy_value.to_f64().unwrap_or(0.0);
+            let sell_value = a.sell_value.to_f64().unwrap_or(0.0);
+            let net_value = a.net_value.to_f64().unwrap_or(0.0);
+            let avg_price = if a.sell_volume > 0 {
+                sell_value / a.sell_volume as f64
+            } else {
+                0.0
+            };
+
+            BrokerInfo {
+                code: a.broker_code.clone(),
+                name: a.broker_name.clone(),
+                avg_price,
+                category: a.category.clone(),
+                buy_volume: a.buy_volume,
+                sell_volume: a.sell_volume,
+                net_volume: a.net_volume,
+                buy_value,
+                sell_value,
+                net_value,
+            }
+        })
+        .collect();
+
     Ok(BrokerSummaryResponse {
-        big_buyers: vec![],
-        big_sellers: vec![],
-        net_status: "balanced".to_string(),
+        big_buyers,
+        big_sellers,
+        net_status: net_status.to_string(),
         price_range: PriceRange {
-            low: 0.0,
-            high: 0.0,
+            low: price_range.low.and_then(|d| d.to_f64()).unwrap_or(0.0),
+            high: price_range.high.and_then(|d| d.to_f64()).unwrap_or(0.0),
         },
-        foreign_net: 0.0,
-        domestic_net: 0.0,
+        foreign_net,
+        domestic_net,
     })
 }
 

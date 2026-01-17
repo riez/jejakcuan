@@ -7,9 +7,32 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use jejakcuan_db::{repositories, WatchlistRow};
+use jejakcuan_db::{repositories, StockRow, WatchlistRow};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+
+const SYARIAH_BANK_ALLOWLIST: &[&str] = &["BRIS", "BTPS", "PNBS"];
+
+fn is_excluded_non_syariah_bank(stock: &StockRow) -> bool {
+    let is_bank = stock
+        .sector
+        .as_deref()
+        .map(|s| s.eq_ignore_ascii_case("Banking") || s.eq_ignore_ascii_case("Financials"))
+        .unwrap_or(false)
+        && stock
+            .subsector
+            .as_deref()
+            .map(|s| s.eq_ignore_ascii_case("Bank") || s.eq_ignore_ascii_case("Banks"))
+            .unwrap_or(false);
+
+    if !is_bank {
+        return false;
+    }
+
+    !SYARIAH_BANK_ALLOWLIST
+        .iter()
+        .any(|allowed| stock.symbol.eq_ignore_ascii_case(allowed))
+}
 
 pub fn watchlist_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -49,7 +72,7 @@ async fn add_to_watchlist(
     let symbol = req.symbol.to_uppercase();
     
     // First, check if the stock exists in the database
-    let stock_exists = repositories::stocks::get_stock_by_symbol(&state.db, &symbol)
+    let stock = repositories::stocks::get_stock_by_symbol(&state.db, &symbol)
         .await
         .map_err(|e| (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -60,7 +83,7 @@ async fn add_to_watchlist(
             })
         ))?;
     
-    if stock_exists.is_none() {
+    let Some(stock) = stock else {
         return Err((
             axum::http::StatusCode::NOT_FOUND,
             Json(WatchlistError {
@@ -68,6 +91,20 @@ async fn add_to_watchlist(
                 code: "STOCK_NOT_FOUND".to_string(),
                 symbol: symbol.clone(),
             })
+        ));
+    };
+
+    if is_excluded_non_syariah_bank(&stock) {
+        return Err((
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(WatchlistError {
+                error: format!(
+                    "Stock '{}' is excluded (non-Syariah bank).",
+                    symbol
+                ),
+                code: "EXCLUDED_NON_SYARIAH_BANK".to_string(),
+                symbol: symbol.clone(),
+            }),
         ));
     }
     

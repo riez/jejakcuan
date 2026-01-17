@@ -18,10 +18,11 @@ Broker codes reference:
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from bs4 import BeautifulSoup
 from loguru import logger
 
 from .base import BaseScraper, ScraperConfig
@@ -44,7 +45,7 @@ class BrokerTransaction:
 class BrokerFlowScraper(BaseScraper):
     """Scraper for broker flow (buy/sell) data."""
 
-    INDOPREMIER_API = "https://www.indopremier.com/api"
+    INDOPREMIER_BASE = "https://www.indopremier.com"
     STOCKBIT_API = "https://api.stockbit.com"
     IDX_BASE = "https://www.idx.co.id"
 
@@ -136,7 +137,7 @@ class BrokerFlowScraper(BaseScraper):
         """
         transactions: list[BrokerTransaction] = []
 
-        # Try Indopremier API first
+        # Try Indopremier broker summary (HTML) first
         indopremier_data = await self._fetch_indopremier(symbol, start_date, end_date)
         transactions.extend(indopremier_data)
 
@@ -158,7 +159,7 @@ class BrokerFlowScraper(BaseScraper):
         start_date: datetime,
         end_date: datetime,
     ) -> list[BrokerTransaction]:
-        """Fetch broker data from Indopremier.
+        """Fetch broker data from Indopremier broker summary (HTML).
 
         Args:
             symbol: Stock symbol
@@ -168,24 +169,122 @@ class BrokerFlowScraper(BaseScraper):
         Returns:
             List of broker transactions
         """
-        transactions: list[BrokerTransaction] = []
+        results: dict[tuple[date, str], BrokerTransaction] = {}
 
-        # Indopremier broker summary endpoint
-        url = f"{self.INDOPREMIER_API}/stock/broker-summary"
+        current_day = start_date.date()
+        end_day = end_date.date()
+
+        while current_day <= end_day:
+            day_txs = await self._fetch_indopremier_broker_summary_day(symbol, current_day)
+            for tx in day_txs:
+                key = (tx.trade_date.date(), tx.broker_code)
+                existing = results.get(key)
+                if existing is None:
+                    results[key] = tx
+                else:
+                    existing.buy_volume += tx.buy_volume
+                    existing.sell_volume += tx.sell_volume
+                    existing.buy_value += tx.buy_value
+                    existing.sell_value += tx.sell_value
+
+            current_day += timedelta(days=1)
+
+        return list(results.values())
+
+    async def _fetch_indopremier_broker_summary_day(
+        self,
+        symbol: str,
+        trade_day: date,
+    ) -> list[BrokerTransaction]:
+        """Fetch broker summary for a single day from Indopremier.
+
+        The endpoint returns an HTML table with top buyers/sellers.
+        We parse the table and emit broker transactions for that day.
+        """
+        url = f"{self.INDOPREMIER_BASE}/module/saham/include/data-brokersummary.php"
+        date_str = trade_day.strftime("%m/%d/%Y")
         params = {
-            "stock": symbol,
-            "from": start_date.strftime("%Y-%m-%d"),
-            "to": end_date.strftime("%Y-%m-%d"),
+            "code": symbol,
+            "start": date_str,
+            "end": date_str,
+            "fd": "all",
+            "board": "RG",
         }
 
-        data = await self._fetch_json(url, params=params)
-        if data and "data" in data:
-            for item in data["data"]:
-                tx = self._parse_indopremier_item(symbol, item)
-                if tx:
-                    transactions.append(tx)
+        response = await self._fetch_url(url, params=params)
+        if response is None:
+            return []
 
-        return transactions
+        soup = BeautifulSoup(response.text, "html.parser")
+        table = soup.select_one("table.table-summary")
+        if not table:
+            return []
+
+        def parse_int(text: str) -> int:
+            cleaned = text.replace(",", "").replace(" ", "").strip()
+            return int(cleaned) if cleaned else 0
+
+        def parse_value(text: str) -> Decimal:
+            cleaned = text.replace(",", "").strip()
+            if not cleaned or cleaned == "-":
+                return Decimal("0")
+
+            parts = cleaned.split()
+            num = Decimal(parts[0])
+            mult = Decimal("1")
+            if len(parts) > 1:
+                suffix = parts[1].upper()
+                if suffix == "T":
+                    mult = Decimal("1000000000000")
+                elif suffix == "B":
+                    mult = Decimal("1000000000")
+                elif suffix == "M":
+                    mult = Decimal("1000000")
+                elif suffix == "K":
+                    mult = Decimal("1000")
+            return num * mult
+
+        trade_dt = datetime.combine(trade_day, datetime.min.time(), tzinfo=UTC)
+        txs: dict[str, BrokerTransaction] = {}
+
+        for row in table.select("tbody tr"):
+            cells = row.find_all("td")
+            if len(cells) < 9:
+                continue
+
+            buyer_code = cells[0].get_text(strip=True).upper()
+            buy_lot = parse_int(cells[1].get_text(strip=True))
+            buy_val = parse_value(cells[2].get_text(strip=True))
+
+            seller_code = cells[5].get_text(strip=True).upper()
+            sell_lot = parse_int(cells[6].get_text(strip=True))
+            sell_val = parse_value(cells[7].get_text(strip=True))
+
+            if buyer_code:
+                tx = txs.get(buyer_code)
+                if tx is None:
+                    tx = BrokerTransaction(
+                        symbol=symbol,
+                        trade_date=trade_dt,
+                        broker_code=buyer_code[:4],
+                    )
+                    txs[buyer_code] = tx
+                tx.buy_volume += buy_lot * 100
+                tx.buy_value += buy_val
+
+            if seller_code:
+                tx = txs.get(seller_code)
+                if tx is None:
+                    tx = BrokerTransaction(
+                        symbol=symbol,
+                        trade_date=trade_dt,
+                        broker_code=seller_code[:4],
+                    )
+                    txs[seller_code] = tx
+                tx.sell_volume += sell_lot * 100
+                tx.sell_value += sell_val
+
+        return [t for t in txs.values() if t.buy_volume or t.sell_volume]
 
     async def _fetch_stockbit(
         self,
@@ -374,13 +473,19 @@ async def main() -> None:
     days = 30
 
     args = sys.argv[1:]
-    for i, arg in enumerate(args):
+    i = 0
+    while i < len(args):
+        arg = args[i]
         if arg == "--days" and i + 1 < len(args):
             days = int(args[i + 1])
+            i += 2
         elif not arg.startswith("--"):
             if symbols is None:
                 symbols = []
             symbols.append(arg)
+            i += 1
+        else:
+            i += 1
 
     if symbols:
         logger.info(f"Scraping broker flow for: {symbols}")

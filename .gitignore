@@ -23,6 +23,10 @@ __pycache__/
 .vscode/
 *.swp
 
+# Worktrees
+.worktrees/
+worktrees/
+
 # Environment
 .env
 .env.local

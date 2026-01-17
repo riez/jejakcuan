@@ -1,6 +1,7 @@
 //! Stock repository
 
 use crate::models::{FinancialsRow, StockRow};
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 
 /// Get all active stocks
@@ -59,5 +60,17 @@ pub async fn get_financials(
     )
     .bind(symbol)
     .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_latest_financials_created_at(
+    pool: &PgPool,
+    symbol: &str,
+) -> Result<Option<DateTime<Utc>>, sqlx::Error> {
+    sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        "SELECT MAX(created_at) FROM financials WHERE symbol = $1",
+    )
+    .bind(symbol)
+    .fetch_one(pool)
     .await
 }

@@ -3,7 +3,7 @@ import { api } from './api';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+(globalThis as any).fetch = mockFetch;
 
 // Mock localStorage
 const localStorageMock = {
@@ -11,7 +11,7 @@ const localStorageMock = {
   setItem: vi.fn(),
   removeItem: vi.fn(),
 };
-Object.defineProperty(global, 'localStorage', { value: localStorageMock });
+Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock });
 
 // Helper to create mock response
 function createMockResponse(options: {

@@ -3,7 +3,7 @@
   import { ProgressRadial, TabGroup, Tab } from '@skeletonlabs/skeleton';
   import { SignalCard, SignalFilters, StockAnalysis } from '$lib/components';
   import { api } from '$lib/api';
-  import type { Stock, StockScore, FullAnalysisResponse } from '$lib/api';
+  import type { Stock, StockFreshness, StockScore, FullAnalysisResponse } from '$lib/api';
   import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion } from '$lib/components/StockAnalysis.types';
 
   interface Signal {
@@ -25,6 +25,7 @@
     technical?: TechnicalAnalysis;
     valuation?: ValuationEstimate;
     conclusion?: OverallConclusion;
+    freshness?: StockFreshness;
   }
 
   interface Filters {
@@ -44,6 +45,7 @@
   let language = $state<'en' | 'id'>('id');
   let viewTab = $state(0); // 0 = list, 1 = analysis
   let errorMessage = $state<string | null>(null);
+  let analysisError = $state<string | null>(null);
 
   onMount(async () => {
     await loadSignals();
@@ -53,10 +55,34 @@
   function convertBrokerSummary(data: FullAnalysisResponse['broker_summary']): BrokerSummary | undefined {
     if (!data || (data.big_buyers.length === 0 && data.big_sellers.length === 0)) return undefined;
     return {
-      bigBuyers: data.big_buyers.map(b => ({ code: b.code, avgPrice: b.avg_price })),
-      bigSellers: data.big_sellers.map(b => ({ code: b.code, avgPrice: b.avg_price })),
+      bigBuyers: data.big_buyers.map(b => ({
+        code: b.code,
+        name: b.name,
+        category: b.category,
+        avgPrice: b.avg_price,
+        buyVolume: b.buy_volume,
+        sellVolume: b.sell_volume,
+        netVolume: b.net_volume,
+        buyValue: b.buy_value,
+        sellValue: b.sell_value,
+        netValue: b.net_value,
+      })),
+      bigSellers: data.big_sellers.map(b => ({
+        code: b.code,
+        name: b.name,
+        category: b.category,
+        avgPrice: b.avg_price,
+        buyVolume: b.buy_volume,
+        sellVolume: b.sell_volume,
+        netVolume: b.net_volume,
+        buyValue: b.buy_value,
+        sellValue: b.sell_value,
+        netValue: b.net_value,
+      })),
       netStatus: data.net_status as 'accumulation' | 'distribution' | 'balanced',
-      priceRange: { low: data.price_range.low, high: data.price_range.high }
+      priceRange: { low: data.price_range.low, high: data.price_range.high },
+      foreignNet: data.foreign_net,
+      domesticNet: data.domestic_net,
     };
   }
 
@@ -104,7 +130,17 @@
     };
   }
 
-  function determineSignalType(score: number, technical: TechnicalAnalysis | undefined): 'buy' | 'sell' | 'hold' {
+  function determineSignalType(
+    score: number,
+    technical: TechnicalAnalysis | undefined,
+    brokerSummary?: BrokerSummary
+  ): 'buy' | 'sell' | 'hold' {
+    // Order flow first
+    if (brokerSummary) {
+      if (brokerSummary.netStatus === 'accumulation' && score >= 50) return 'buy';
+      if (brokerSummary.netStatus === 'distribution' && score <= 60) return 'sell';
+    }
+
     if (score >= 70) return 'buy';
     if (score <= 40) return 'sell';
     if (technical) {
@@ -121,10 +157,42 @@
     return 'weak';
   }
 
-  function generateReason(technical: TechnicalAnalysis | undefined, signalType: 'buy' | 'sell' | 'hold'): string {
-    if (!technical) return 'Technical analysis data unavailable.';
-    
+  function generateReason(
+    technical: TechnicalAnalysis | undefined,
+    signalType: 'buy' | 'sell' | 'hold',
+    brokerSummary?: BrokerSummary
+  ): string {
     const reasons: string[] = [];
+
+    if (brokerSummary) {
+      const buyers = brokerSummary.bigBuyers.slice(0, 3).map(b => b.code).join(', ');
+      const sellers = brokerSummary.bigSellers.slice(0, 3).map(b => b.code).join(', ');
+      if (brokerSummary.netStatus === 'accumulation') {
+        reasons.push(
+          language === 'id'
+            ? `Order flow: akumulasi (${buyers || '-'}).`
+            : `Order flow: accumulation (${buyers || '-'}).`
+        );
+      } else if (brokerSummary.netStatus === 'distribution') {
+        reasons.push(
+          language === 'id'
+            ? `Order flow: distribusi (${sellers || '-'}).`
+            : `Order flow: distribution (${sellers || '-'}).`
+        );
+      } else {
+        reasons.push(
+          language === 'id'
+            ? `Order flow: seimbang (buy: ${buyers || '-'} | sell: ${sellers || '-'}).`
+            : `Order flow: balanced (buy: ${buyers || '-'} | sell: ${sellers || '-'}).`
+        );
+      }
+    }
+
+    if (!technical) {
+      return reasons.length > 0
+        ? reasons.join(' ')
+        : (language === 'id' ? 'Data teknikal tidak tersedia.' : 'Technical analysis data unavailable.');
+    }
     
     // RSI
     if (technical.rsi <= 30) {
@@ -154,13 +222,17 @@
       reasons.push(`${technical.summary.sell} sell signals vs ${technical.summary.buy} buy signals`);
     }
     
-    return reasons.length > 0 ? reasons.join('. ') + '.' : 'Mixed signals, monitor closely.';
+    return reasons.length > 0 ? reasons.join(' ') : (language === 'id' ? 'Sinyal campuran, pantau.' : 'Mixed signals, monitor closely.');
   }
 
-  function generateIndicators(technical: TechnicalAnalysis | undefined): string[] {
-    if (!technical) return [];
-    
+  function generateIndicators(technical: TechnicalAnalysis | undefined, brokerSummary?: BrokerSummary): string[] {
     const indicators: string[] = [];
+
+    if (brokerSummary) {
+      indicators.push(`Order Flow: ${brokerSummary.netStatus}`);
+    }
+
+    if (!technical) return indicators;
     
     if (technical.rsi <= 30) indicators.push('RSI Oversold');
     else if (technical.rsi >= 70) indicators.push('RSI Overbought');
@@ -181,15 +253,28 @@
     errorMessage = null;
     
     try {
+      const watchlist = await api.getWatchlist().catch(() => []);
+      const watchlistSymbols = new Set(watchlist.map((w) => w.symbol.toUpperCase()));
+
       // First, get top stocks with scores
-      const scores = await api.getTopScores(20);
+      let scores = await api.getTopScores(100);
+
+      // If scores are missing, trigger a recompute to avoid placeholder signals.
+      if (scores.length === 0) {
+        await api.recomputeScores().catch(() => undefined);
+        scores = await api.getTopScores(100);
+      }
+
+      // Exclude symbols already in watchlist (signals = new opportunities)
+      scores = scores.filter((s) => !watchlistSymbols.has(s.symbol.toUpperCase())).slice(0, 20);
       
       if (scores.length === 0) {
         // Fallback: get some stocks without scores
         const { stocks } = await api.getStocks(undefined, 10);
+        const filteredStocks = stocks.filter((s) => !watchlistSymbols.has(s.symbol.toUpperCase()));
         
         // Create placeholder signals for stocks without scores
-        signals = stocks.map((stock, index) => ({
+        signals = filteredStocks.map((stock, index) => ({
           id: `${stock.symbol}-${index}`,
           symbol: stock.symbol,
           stockName: stock.name,
@@ -204,7 +289,7 @@
         }));
       } else {
         // Create signals from scores
-        signals = await Promise.all(scores.slice(0, 15).map(async (score, index) => {
+        signals = await Promise.all(scores.map(async (score, index) => {
           try {
             const stock = await api.getStock(score.symbol);
             const compositeScore = Math.round(score.composite_score);
@@ -255,30 +340,41 @@
   async function loadAnalysisForSignal(signal: Signal): Promise<Signal> {
     try {
       loadingAnalysis = signal.symbol;
-      const analysis = await api.getFullAnalysis(signal.symbol);
-      
-      if (analysis) {
-        const technical = convertTechnical(analysis.technical);
-        const signalType = technical ? determineSignalType(signal.score, technical) : signal.type;
-        
-        return {
-          ...signal,
-          stockName: analysis.name || signal.stockName,
-          type: signalType,
-          priceAtSignal: analysis.technical?.last_price || 0,
-          reason: generateReason(technical, signalType),
-          indicators: generateIndicators(technical),
-          targetPrice: technical ? technical.resistance[0] : undefined,
-          stopLoss: technical ? technical.support[0] : undefined,
-          brokerSummary: convertBrokerSummary(analysis.broker_summary),
-          technical: technical,
-          valuation: convertValuation(analysis.valuation),
-          conclusion: convertConclusion(analysis.conclusion)
-        };
+      analysisError = null;
+      const [analysis, freshness] = await Promise.all([
+        api.getFullAnalysis(signal.symbol),
+        api.getStockFreshness(signal.symbol).catch(() => null)
+      ]);
+
+      if (!analysis) {
+        analysisError = language === 'id'
+          ? 'Data analisis tidak tersedia untuk saham ini.'
+          : 'Analysis data is not available for this stock.';
+        return signal;
       }
-      return signal;
+
+      const technical = convertTechnical(analysis.technical);
+      const brokerSummary = convertBrokerSummary(analysis.broker_summary);
+      const signalType = determineSignalType(signal.score, technical, brokerSummary);
+      
+      return {
+        ...signal,
+        stockName: analysis.name || signal.stockName,
+        type: signalType,
+        priceAtSignal: analysis.technical?.last_price || 0,
+        reason: generateReason(technical, signalType, brokerSummary),
+        indicators: generateIndicators(technical, brokerSummary),
+        targetPrice: technical ? technical.resistance[0] : undefined,
+        stopLoss: technical ? technical.support[0] : undefined,
+        brokerSummary,
+        technical: technical,
+        valuation: convertValuation(analysis.valuation),
+        conclusion: convertConclusion(analysis.conclusion),
+        freshness: freshness ?? undefined
+      };
     } catch (err) {
       console.error(`Failed to load analysis for ${signal.symbol}:`, err);
+      analysisError = err instanceof Error ? err.message : 'Failed to load analysis';
       return signal;
     } finally {
       loadingAnalysis = null;
@@ -296,6 +392,7 @@
   }
 
   async function selectSignal(signal: Signal) {
+    analysisError = null;
     // Load detailed analysis if not already loaded
     if (!signal.technical) {
       const updatedSignal = await loadAnalysisForSignal(signal);
@@ -514,16 +611,7 @@
       </div>
 
       <!-- Comprehensive Analysis -->
-      {#if selectedSignal.technical || selectedSignal.brokerSummary || selectedSignal.valuation || selectedSignal.conclusion}
-        <StockAnalysis 
-          symbol={selectedSignal.symbol}
-          brokerSummary={selectedSignal.brokerSummary}
-          technical={selectedSignal.technical}
-          valuation={selectedSignal.valuation}
-          conclusion={selectedSignal.conclusion}
-          {language}
-        />
-      {:else}
+      {#if loadingAnalysis === selectedSignal.symbol}
         <div class="card p-8 text-center">
           <p class="text-slate-500 dark:text-slate-400">
             {language === 'id' 
@@ -532,6 +620,24 @@
           </p>
           <ProgressRadial width="w-8" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" class="mx-auto mt-4" />
         </div>
+      {:else}
+        {#if analysisError}
+          <div class="card variant-soft-error p-4">
+            <p class="text-rose-700 dark:text-rose-300">
+              <strong>{language === 'id' ? 'Gagal memuat analisis:' : 'Failed to load analysis:'}</strong>
+              {analysisError}
+            </p>
+          </div>
+        {/if}
+        <StockAnalysis 
+          symbol={selectedSignal.symbol}
+          brokerSummary={selectedSignal.brokerSummary}
+          technical={selectedSignal.technical}
+          valuation={selectedSignal.valuation}
+          conclusion={selectedSignal.conclusion}
+          freshness={selectedSignal.freshness}
+          {language}
+        />
       {/if}
     </div>
   {/if}
