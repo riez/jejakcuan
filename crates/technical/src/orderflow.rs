@@ -266,6 +266,25 @@ pub fn money_flow_multiplier(high: Decimal, low: Decimal, close: Decimal) -> Dec
     ((close - low) - (high - close)) / range
 }
 
+pub fn calculate_ohlc_imbalance_proxy(
+    high: Decimal,
+    low: Decimal,
+    close: Decimal,
+    volume: i64,
+) -> Decimal {
+    if volume <= 0 {
+        return Decimal::ZERO;
+    }
+
+    let range = high - low;
+    if range == Decimal::ZERO {
+        return Decimal::ZERO;
+    }
+
+    let proxy = ((close - low) - (high - close)) / range;
+    proxy.max(dec!(-1)).min(dec!(1))
+}
+
 /// Calculate Accumulation/Distribution Line
 pub fn calculate_adl(
     highs: &[Decimal],
@@ -532,6 +551,18 @@ mod tests {
     fn test_money_flow_multiplier_no_range() {
         let mfm = money_flow_multiplier(dec!(100), dec!(100), dec!(100));
         assert_eq!(mfm, Decimal::ZERO);
+    }
+
+    #[test]
+    fn test_ohlc_imbalance_proxy() {
+        let obi = calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(109), 1000);
+        assert!(obi > dec!(0.5));
+
+        let obi = calculate_ohlc_imbalance_proxy(dec!(110), dec!(100), dec!(101), 1000);
+        assert!(obi < dec!(-0.5));
+
+        let obi = calculate_ohlc_imbalance_proxy(dec!(100), dec!(100), dec!(100), 1000);
+        assert_eq!(obi, Decimal::ZERO);
     }
 
     #[test]
