@@ -8,19 +8,22 @@ use axum::{
     Json, Router,
 };
 use chrono::{Duration, Utc};
+use futures_util::StreamExt;
 use jejakcuan_core::{
     calculate_composite_score, FundamentalInput, FundamentalScoreEngine, ScoreWeights,
     TechnicalScoreEngine, TechnicalScoreInput,
 };
 use jejakcuan_db::{repositories, StockPriceRow, StockRow, StockScoreRow};
-use jejakcuan_technical::{calculate_ema20, calculate_ema50, calculate_macd, calculate_rsi14};
+use jejakcuan_technical::{
+    calculate_ema20, calculate_ema50, calculate_macd, calculate_ohlc_imbalance_proxy,
+    calculate_rsi14, calculate_trend_normalized,
+};
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
-use futures_util::StreamExt;
-use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
-use rust_decimal_macros::dec;
-use rust_decimal::Decimal;
 
 pub fn stock_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -37,6 +40,52 @@ pub fn stock_routes() -> Router<Arc<AppState>> {
 const SCORE_STALE_HOURS: i64 = 24;
 
 const SYARIAH_BANK_ALLOWLIST: &[&str] = &["BRIS", "BTPS", "PNBS"];
+
+const ORDERFLOW_TREND_WINDOW: usize = 20;
+
+fn compute_orderflow_inputs_from_ohlcv(
+    highs: &[Decimal],
+    lows: &[Decimal],
+    closes: &[Decimal],
+    volumes: &[i64],
+) -> (Option<Decimal>, Option<Decimal>) {
+    let min_len = highs
+        .len()
+        .min(lows.len())
+        .min(closes.len())
+        .min(volumes.len());
+
+    if min_len < 2 {
+        return (None, None);
+    }
+
+    let last_idx = min_len - 1;
+    let obi = calculate_ohlc_imbalance_proxy(
+        highs[last_idx],
+        lows[last_idx],
+        closes[last_idx],
+        volumes[last_idx],
+    );
+
+    let start_idx = min_len.saturating_sub(ORDERFLOW_TREND_WINDOW);
+    if min_len - start_idx < 2 {
+        return (Some(obi), None);
+    }
+
+    let mut series = Vec::with_capacity(min_len - start_idx);
+    for idx in start_idx..min_len {
+        series.push(calculate_ohlc_imbalance_proxy(
+            highs[idx],
+            lows[idx],
+            closes[idx],
+            volumes[idx],
+        ));
+    }
+
+    let ofi_trend = calculate_trend_normalized(&series);
+
+    (Some(obi), Some(ofi_trend))
+}
 
 fn is_excluded_non_syariah_bank(stock: &StockRow) -> bool {
     let is_bank = stock
@@ -123,23 +172,25 @@ async fn get_stock(
     tracing::debug!("get_stock called with symbol: {}", symbol);
     let upper_symbol = symbol.to_uppercase();
     tracing::debug!("Looking up stock: {}", upper_symbol);
-    
+
     let stock = repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| {
             tracing::error!("Database error: {}", e);
             (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
-    
+
     tracing::debug!("Stock query result: {:?}", stock.is_some());
-    
-    stock.ok_or_else(|| {
-        tracing::debug!("Stock not found: {}", upper_symbol);
-        (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("Stock not found: {}", upper_symbol),
-        )
-    }).map(Json)
+
+    stock
+        .ok_or_else(|| {
+            tracing::debug!("Stock not found: {}", upper_symbol);
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("Stock not found: {}", upper_symbol),
+            )
+        })
+        .map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,7 +227,12 @@ async fn get_stock_score(
     repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Stock not found".to_string()))?;
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                "Stock not found".to_string(),
+            )
+        })?;
 
     let now = Utc::now();
     let existing = repositories::scores::get_stock_score(&state.db, &upper_symbol)
@@ -304,10 +360,16 @@ async fn compute_and_insert_score(
 
     let current_price = close_prices.last().copied().unwrap_or(Decimal::ZERO);
 
-    let ema20 = calculate_ema20(&close_prices).ok().and_then(|v| v.last().copied());
-    let ema50 = calculate_ema50(&close_prices).ok().and_then(|v| v.last().copied());
+    let ema20 = calculate_ema20(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
+    let ema50 = calculate_ema50(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
 
-    let rsi = calculate_rsi14(&close_prices).ok().and_then(|v| v.last().copied());
+    let rsi = calculate_rsi14(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
     let macd_histogram = calculate_macd(&close_prices)
         .ok()
         .and_then(|m| m.histogram.last().copied());
@@ -359,6 +421,9 @@ async fn compute_and_insert_score(
         Decimal::from_f64(s)
     };
 
+    let (obi, ofi_trend) =
+        compute_orderflow_inputs_from_ohlcv(&highs, &lows, &close_prices, &volumes);
+
     let technical_engine = TechnicalScoreEngine::new();
     let technical_input = TechnicalScoreInput {
         current_price,
@@ -366,8 +431,8 @@ async fn compute_and_insert_score(
         volumes,
         highs,
         lows,
-        obi: None,
-        ofi_trend: None,
+        obi,
+        ofi_trend,
         broker_score,
         institutional_buying,
         foreign_buying: foreign_net > 0.0,
@@ -506,6 +571,28 @@ async fn get_stock_fundamentals(
     Ok(Json(result))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_orderflow_inputs_from_ohlcv() {
+        let highs = vec![dec!(110), dec!(110), dec!(110), dec!(110)];
+        let lows = vec![dec!(100), dec!(100), dec!(100), dec!(100)];
+        let closes = vec![dec!(101), dec!(103), dec!(106), dec!(109)];
+        let volumes = vec![1000, 1000, 1000, 1000];
+
+        let (obi, ofi_trend) =
+            compute_orderflow_inputs_from_ohlcv(&highs, &lows, &closes, &volumes);
+
+        assert!(obi.is_some());
+        assert!(obi.unwrap() > Decimal::ZERO);
+
+        assert!(ofi_trend.is_some());
+        assert!(ofi_trend.unwrap() > Decimal::ZERO);
+    }
+}
+
 async fn get_stock_freshness(
     _user: AuthUser,
     State(state): State<Arc<AppState>>,
@@ -529,19 +616,15 @@ async fn get_stock_freshness(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .map(|p| p.time);
 
-    let broker_flow_as_of = repositories::broker_summary::get_latest_broker_summary_time(
-        &state.db,
-        &upper_symbol,
-    )
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let broker_flow_as_of =
+        repositories::broker_summary::get_latest_broker_summary_time(&state.db, &upper_symbol)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let financials_as_of = repositories::stocks::get_latest_financials_created_at(
-        &state.db,
-        &upper_symbol,
-    )
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let financials_as_of =
+        repositories::stocks::get_latest_financials_created_at(&state.db, &upper_symbol)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let scores_as_of = repositories::scores::get_stock_score(&state.db, &upper_symbol)
         .await
