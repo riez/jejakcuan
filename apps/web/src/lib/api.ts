@@ -208,6 +208,14 @@ interface RefreshStockResponse {
   message: string;
 }
 
+interface RefreshSourceResponse {
+  symbol: string;
+  source_type: string;
+  job: Job;
+}
+
+type StockSourceType = 'price' | 'broker' | 'fundamental';
+
 interface SkippedSource {
   source_id: string;
   reason: string;
@@ -466,6 +474,10 @@ class ApiClient {
     return this.fetch(`/api/stocks/${symbol}/refresh`, { method: 'POST' });
   }
 
+  async refreshStockSource(symbol: string, sourceType: StockSourceType): Promise<RefreshSourceResponse> {
+    return this.fetch(`/api/stocks/${symbol}/refresh/${sourceType}`, { method: 'POST' });
+  }
+
   async getTopScores(limit?: number): Promise<StockScore[]> {
     const params = limit ? `?limit=${limit}` : '';
     return this.fetch(`/api/stocks/scores/top${params}`);
@@ -627,5 +639,7 @@ export type {
   Job,
   JobStatus,
   JobsListResponse,
-  RefreshStockResponse
+  RefreshStockResponse,
+  RefreshSourceResponse,
+  StockSourceType
 };

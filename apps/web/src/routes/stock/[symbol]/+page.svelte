@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { TabGroup, Tab, ProgressRadial } from '@skeletonlabs/skeleton';
-  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData, type Job } from '$lib/api';
+  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData, type Job, type StockSourceType } from '$lib/api';
   import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
   let symbol = $derived($page.params.symbol ?? '');
@@ -15,10 +15,27 @@
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
   let tabSet = $state(0);
-  let isRefreshing = $state(false);
-  let refreshJobs = $state<Job[]>([]);
-  let refreshError = $state<string | null>(null);
-  let refreshSuccess = $state(false);
+
+  type SourceKey = 'price' | 'broker' | 'fundamental';
+
+  let sourceLoading = $state<Record<SourceKey, boolean>>({
+    price: false,
+    broker: false,
+    fundamental: false
+  });
+  let sourceJobs = $state<Record<SourceKey, Job | null>>({
+    price: null,
+    broker: null,
+    fundamental: null
+  });
+  let sourceErrors = $state<Record<SourceKey, string | null>>({
+    price: null,
+    broker: null,
+    fundamental: null
+  });
+
+  let jobPollingIntervals: Record<string, ReturnType<typeof setInterval>> = {};
+  let isRefreshingAll = $state(false);
 
   onMount(async () => {
     if (!symbol) {
@@ -50,6 +67,10 @@
     }
   });
 
+  onDestroy(() => {
+    Object.values(jobPollingIntervals).forEach(interval => clearInterval(interval));
+  });
+
   const STALE_DAYS = 7;
 
   function isStale(asOf: string | null | undefined): boolean {
@@ -59,8 +80,17 @@
   }
 
   function formatAsOf(asOf: string | null | undefined): string {
-    if (!asOf) return '-';
+    if (!asOf) return 'Never';
     return new Date(asOf).toLocaleString();
+  }
+
+  function formatHoursAgo(asOf: string | null | undefined): string {
+    if (!asOf) return 'No data';
+    const hours = Math.floor((Date.now() - new Date(asOf).getTime()) / (1000 * 60 * 60));
+    if (hours < 1) return 'Just now';
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ${hours % 24}h ago`;
   }
 
   async function toggleWatchlist() {
@@ -79,70 +109,79 @@
     }
   }
 
-  async function refreshData() {
-    if (!symbol || isRefreshing) return;
+  async function triggerSource(sourceKey: SourceKey) {
+    if (!symbol || sourceLoading[sourceKey]) return;
 
-    isRefreshing = true;
-    refreshError = null;
-    refreshSuccess = false;
+    sourceLoading[sourceKey] = true;
+    sourceErrors[sourceKey] = null;
+    sourceJobs[sourceKey] = null;
 
     try {
-      const response = await api.refreshStockData(symbol);
-      refreshJobs = response.jobs;
+      const response = await api.refreshStockSource(symbol, sourceKey as StockSourceType);
+      sourceJobs[sourceKey] = response.job;
+      startJobPolling(sourceKey, response.job.id);
+    } catch (e) {
+      sourceErrors[sourceKey] = (e as Error).message;
+      sourceLoading[sourceKey] = false;
+    }
+  }
 
-      const pollInterval = setInterval(async () => {
-        const updatedJobs = await Promise.all(
-          refreshJobs.map(async (job) => {
-            try {
-              return await api.getJob(job.id);
-            } catch {
-              return job;
-            }
-          })
-        );
-        refreshJobs = updatedJobs;
+  function startJobPolling(sourceKey: SourceKey, jobId: string) {
+    if (jobPollingIntervals[sourceKey]) {
+      clearInterval(jobPollingIntervals[sourceKey]);
+    }
 
-        const allDone = updatedJobs.every(
-          (j) => j.status === 'completed' || j.status === 'failed'
-        );
+    jobPollingIntervals[sourceKey] = setInterval(async () => {
+      try {
+        const job = await api.getJob(jobId);
+        const elapsedSecs = (Date.now() - new Date(job.started_at).getTime()) / 1000;
+        sourceJobs[sourceKey] = { ...job, duration_secs: job.duration_secs ?? elapsedSecs };
 
-        if (allDone) {
-          clearInterval(pollInterval);
-          isRefreshing = false;
+        if (job.status === 'completed' || job.status === 'failed') {
+          clearInterval(jobPollingIntervals[sourceKey]);
+          delete jobPollingIntervals[sourceKey];
+          sourceLoading[sourceKey] = false;
 
-          const failed = updatedJobs.filter((j) => j.status === 'failed');
-          if (failed.length > 0) {
-            refreshError = `${failed.length} job(s) failed`;
-          } else {
-            refreshSuccess = true;
+          if (job.status === 'completed') {
             const freshnessData = await api.getStockFreshness(symbol);
             freshness = freshnessData;
-            setTimeout(() => {
-              refreshSuccess = false;
-            }, 5000);
           }
         }
-      }, 2000);
-    } catch (e) {
-      refreshError = (e as Error).message;
-      isRefreshing = false;
-    }
+      } catch (e) {
+        console.error('Failed to poll job:', e);
+      }
+    }, 2000);
   }
 
-  function getJobStatusColor(status: string): string {
-    switch (status) {
-      case 'completed':
-        return 'variant-soft-success';
-      case 'failed':
-        return 'variant-soft-error';
-      case 'running':
-        return 'variant-soft-warning';
-      default:
-        return 'variant-soft-surface';
+  async function refreshAllSources() {
+    if (!symbol || isRefreshingAll) return;
+    isRefreshingAll = true;
+
+    for (const sourceKey of ['price', 'broker', 'fundamental'] as SourceKey[]) {
+      await triggerSource(sourceKey);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
+
+    isRefreshingAll = false;
   }
 
-  // Get latest price info
+  function dismissSourceJob(sourceKey: SourceKey) {
+    sourceJobs[sourceKey] = null;
+    sourceErrors[sourceKey] = null;
+  }
+
+  function getStatusBadge(hasData: boolean, isDataStale: boolean): { text: string; class: string } {
+    if (!hasData) return { text: 'No Data', class: 'variant-soft-error' };
+    if (isDataStale) return { text: 'Stale', class: 'variant-soft-warning' };
+    return { text: 'Fresh', class: 'variant-soft-success' };
+  }
+
+  function getStatusBorder(hasData: boolean, isDataStale: boolean): string {
+    if (!hasData) return 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20';
+    if (isDataStale) return 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20';
+    return 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20';
+  }
+
   let latestPrice = $derived(prices.length > 0 ? prices[prices.length - 1] : null);
   let priceChange = $derived(() => {
     if (prices.length < 2) return { value: 0, percent: 0 };
@@ -153,7 +192,6 @@
     return { value: change, percent };
   });
 
-  // Get recent prices for table display
   let recentPrices = $derived(() => prices.slice().reverse().slice(0, 10));
 </script>
 
@@ -162,7 +200,6 @@
 </svelte:head>
 
 <div class="space-y-6">
-  <!-- Header -->
   <div class="flex items-start justify-between">
     <div>
       <a href="/" class="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 underline underline-offset-2">&larr; Back to Screener</a>
@@ -211,138 +248,283 @@
     {@const hasBroker = !!freshness.broker_flow_as_of}
     {@const hasFinancials = !!freshness.financials_as_of}
     {@const hasScores = !!freshness.scores_as_of}
+    {@const anyStale = stalePrices || staleBroker || staleFinancials || staleScores}
     
     <div class="card p-4">
       <div class="flex items-center justify-between gap-2 flex-wrap mb-4">
         <div>
-          <h3 class="h3">Data Sources & Attribution</h3>
-          <p class="text-sm text-surface-500 mt-1">Shows which sources provide data for this stock</p>
+          <h3 class="h3">Data Sources</h3>
+          <p class="text-sm text-surface-500 mt-1">Trigger individual data sources or refresh all</p>
         </div>
         <div class="flex items-center gap-2">
-          <span class="badge {stalePrices || staleBroker || staleFinancials || staleScores ? 'variant-soft-warning' : 'variant-soft-success'}">
-            {stalePrices || staleBroker || staleFinancials || staleScores ? `Some Stale (>${STALE_DAYS}d)` : 'All Fresh'}
+          <span class="badge {anyStale ? 'variant-soft-warning' : 'variant-soft-success'}">
+            {anyStale ? `Some Stale (>${STALE_DAYS}d)` : 'All Fresh'}
           </span>
           <button
-            onclick={refreshData}
-            disabled={isRefreshing}
-            class="btn btn-sm {isRefreshing ? 'variant-ghost-surface' : 'variant-filled-primary'}"
+            onclick={refreshAllSources}
+            disabled={isRefreshingAll || sourceLoading.price || sourceLoading.broker || sourceLoading.fundamental}
+            class="btn btn-sm {isRefreshingAll ? 'variant-ghost-surface' : 'variant-filled-tertiary'}"
           >
-            {#if isRefreshing}
-              <ProgressRadial width="w-4" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
-              <span>Refreshing...</span>
+            {#if isRefreshingAll}
+              <ProgressRadial width="w-4" stroke={100} meter="stroke-white" track="stroke-white/30" />
+              <span>Refreshing All...</span>
             {:else}
-              Refresh Data
+              Refresh All
             {/if}
           </button>
           <a href="/admin/data-status" class="btn btn-sm variant-ghost-primary">
-            View All Sources
+            Admin Panel
           </a>
         </div>
       </div>
 
-      {#if refreshSuccess}
-        <div class="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-200 text-sm">
-          Data refreshed successfully! Freshness data updated.
-        </div>
-      {/if}
-
-      {#if refreshError}
-        <div class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-900 dark:text-red-200 text-sm">
-          {refreshError}
-        </div>
-      {/if}
-
-      {#if refreshJobs.length > 0 && isRefreshing}
-        <div class="mb-4 p-3 rounded-lg bg-surface-100 dark:bg-surface-800">
-          <p class="text-sm font-medium mb-2">Job Progress:</p>
-          <div class="flex flex-wrap gap-2">
-            {#each refreshJobs as job}
-              <span class="badge {getJobStatusColor(job.status)}">
-                {job.source_name}: {job.status}
-              </span>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      {#if stalePrices || staleBroker || staleFinancials || staleScores}
+      {#if anyStale}
         <div class="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-sm">
-          Some data is older than {STALE_DAYS} days or missing. Analysis may be less accurate.
+          Some data is older than {STALE_DAYS} days or missing. Click "Trigger" to refresh individual sources.
         </div>
       {/if}
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="p-4 rounded-lg border-l-4 {hasPrices ? (stalePrices ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+        {#if true}
+          {@const priceStatus = getStatusBadge(hasPrices, stalePrices)}
+          {@const priceJob = sourceJobs.price}
+          {@const priceLoading = sourceLoading.price}
+          {@const priceError = sourceErrors.price}
+          <div class="p-4 rounded-lg border-l-4 {getStatusBorder(hasPrices, stalePrices)} relative">
+          {#if priceLoading && priceJob}
+            <div class="absolute inset-0 bg-surface-900/40 backdrop-blur-sm rounded-r-lg flex items-center justify-center z-10">
+              <div class="flex flex-col items-center gap-2 p-4 text-center">
+                <ProgressRadial width="w-10" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+                <span class="text-sm font-medium">Running...</span>
+                {#if priceJob.duration_secs}
+                  <span class="text-xs text-surface-400">{priceJob.duration_secs.toFixed(1)}s elapsed</span>
+                {/if}
+              </div>
+            </div>
+          {/if}
+          
           <div class="flex items-center justify-between mb-2">
             <h4 class="font-bold text-slate-900 dark:text-slate-100">Yahoo Finance</h4>
-            <span class="badge text-xs {hasPrices ? (stalePrices ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
-              {hasPrices ? (stalePrices ? 'Stale' : 'Fresh') : 'No Data'}
-            </span>
+            <span class="badge text-xs {priceStatus.class}">{priceStatus.text}</span>
           </div>
           <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
             <strong>Provides:</strong> OHLCV prices, volume, historical data
           </div>
-          <div class="text-xs text-slate-500">
-            <strong>Used in:</strong> Price chart, technical indicators (RSI, MACD, Bollinger)
+          <div class="text-xs text-slate-500 mb-2">
+            <strong>Used in:</strong> Price chart, technical indicators
           </div>
-          <div class="mt-2 text-xs font-mono text-slate-500">
-            Updated: {formatAsOf(freshness.prices_as_of)}
+          <div class="text-xs font-mono text-slate-500 mb-3">
+            Updated: {formatHoursAgo(freshness.prices_as_of)}
+          </div>
+
+          {#if priceError}
+            <div class="mb-3 p-2 rounded bg-error-500/20 text-error-500 text-xs">{priceError}</div>
+          {/if}
+
+          {#if priceJob && !priceLoading}
+            {@const isSuccess = priceJob.status === 'completed'}
+            {@const isFailed = priceJob.status === 'failed'}
+            <div class="mb-3 p-2 rounded text-xs {isSuccess ? 'bg-green-500/20 text-green-700 dark:text-green-300' : isFailed ? 'bg-error-500/20 text-error-500' : 'bg-tertiary-500/20 text-tertiary-700'}">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium flex items-center gap-2">
+                    {isSuccess ? '✓' : '✗'} {priceJob.status.toUpperCase()}
+                    {#if priceJob.duration_secs}
+                      <span class="text-surface-400 font-normal">({priceJob.duration_secs.toFixed(1)}s)</span>
+                    {/if}
+                  </div>
+                  {#if priceJob.output}
+                    <details class="mt-1">
+                      <summary class="cursor-pointer hover:opacity-80">View output</summary>
+                      <pre class="mt-1 p-2 bg-surface-900/30 rounded overflow-x-auto text-[10px] max-h-24 overflow-y-auto whitespace-pre-wrap">{priceJob.output}</pre>
+                    </details>
+                  {/if}
+                </div>
+                <button class="hover:opacity-70 text-lg leading-none" onclick={() => dismissSourceJob('price')}>×</button>
+              </div>
+            </div>
+          {/if}
+
+          <div class="flex justify-end">
+            <button
+              class="btn btn-sm variant-ghost-primary"
+              onclick={() => triggerSource('price')}
+              disabled={priceLoading || isRefreshingAll}
+            >
+              <span class="text-sm" class:animate-spin={priceLoading}>↻</span>
+              <span>Trigger</span>
+            </button>
           </div>
         </div>
+        {/if}
 
-        <div class="p-4 rounded-lg border-l-4 {hasBroker ? (staleBroker ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+        {#if true}
+          {@const brokerStatus = getStatusBadge(hasBroker, staleBroker)}
+          {@const brokerJob = sourceJobs.broker}
+          {@const brokerLoading = sourceLoading.broker}
+          {@const brokerError = sourceErrors.broker}
+          <div class="p-4 rounded-lg border-l-4 {getStatusBorder(hasBroker, staleBroker)} relative">
+          {#if brokerLoading && brokerJob}
+            <div class="absolute inset-0 bg-surface-900/40 backdrop-blur-sm rounded-r-lg flex items-center justify-center z-10">
+              <div class="flex flex-col items-center gap-2 p-4 text-center">
+                <ProgressRadial width="w-10" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+                <span class="text-sm font-medium">Running...</span>
+                {#if brokerJob.duration_secs}
+                  <span class="text-xs text-surface-400">{brokerJob.duration_secs.toFixed(1)}s elapsed</span>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <div class="flex items-center justify-between mb-2">
             <h4 class="font-bold text-slate-900 dark:text-slate-100">Stockbit/IDX</h4>
-            <span class="badge text-xs {hasBroker ? (staleBroker ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
-              {hasBroker ? (staleBroker ? 'Stale' : 'Fresh') : 'No Data'}
-            </span>
+            <span class="badge text-xs {brokerStatus.class}">{brokerStatus.text}</span>
           </div>
           <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
-            <strong>Provides:</strong> Broker flow, foreign/domestic net, accumulation data
+            <strong>Provides:</strong> Broker flow, foreign/domestic net
           </div>
-          <div class="text-xs text-slate-500">
-            <strong>Used in:</strong> Broker analysis, sentiment score, institutional tracking
+          <div class="text-xs text-slate-500 mb-2">
+            <strong>Used in:</strong> Broker analysis, sentiment score
           </div>
-          <div class="mt-2 text-xs font-mono text-slate-500">
-            Updated: {formatAsOf(freshness.broker_flow_as_of)}
+          <div class="text-xs font-mono text-slate-500 mb-3">
+            Updated: {formatHoursAgo(freshness.broker_flow_as_of)}
+          </div>
+
+          {#if brokerError}
+            <div class="mb-3 p-2 rounded bg-error-500/20 text-error-500 text-xs">{brokerError}</div>
+          {/if}
+
+          {#if brokerJob && !brokerLoading}
+            {@const isSuccess = brokerJob.status === 'completed'}
+            {@const isFailed = brokerJob.status === 'failed'}
+            <div class="mb-3 p-2 rounded text-xs {isSuccess ? 'bg-green-500/20 text-green-700 dark:text-green-300' : isFailed ? 'bg-error-500/20 text-error-500' : 'bg-tertiary-500/20 text-tertiary-700'}">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium flex items-center gap-2">
+                    {isSuccess ? '✓' : '✗'} {brokerJob.status.toUpperCase()}
+                    {#if brokerJob.duration_secs}
+                      <span class="text-surface-400 font-normal">({brokerJob.duration_secs.toFixed(1)}s)</span>
+                    {/if}
+                  </div>
+                  {#if brokerJob.output}
+                    <details class="mt-1">
+                      <summary class="cursor-pointer hover:opacity-80">View output</summary>
+                      <pre class="mt-1 p-2 bg-surface-900/30 rounded overflow-x-auto text-[10px] max-h-24 overflow-y-auto whitespace-pre-wrap">{brokerJob.output}</pre>
+                    </details>
+                  {/if}
+                </div>
+                <button class="hover:opacity-70 text-lg leading-none" onclick={() => dismissSourceJob('broker')}>×</button>
+              </div>
+            </div>
+          {/if}
+
+          <div class="flex justify-end">
+            <button
+              class="btn btn-sm variant-ghost-primary"
+              onclick={() => triggerSource('broker')}
+              disabled={brokerLoading || isRefreshingAll}
+            >
+              <span class="text-sm" class:animate-spin={brokerLoading}>↻</span>
+              <span>Trigger</span>
+            </button>
           </div>
         </div>
+        {/if}
 
-        <div class="p-4 rounded-lg border-l-4 {hasFinancials ? (staleFinancials ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+        {#if true}
+          {@const fundStatus = getStatusBadge(hasFinancials, staleFinancials)}
+          {@const fundJob = sourceJobs.fundamental}
+          {@const fundLoading = sourceLoading.fundamental}
+          {@const fundError = sourceErrors.fundamental}
+          <div class="p-4 rounded-lg border-l-4 {getStatusBorder(hasFinancials, staleFinancials)} relative">
+          {#if fundLoading && fundJob}
+            <div class="absolute inset-0 bg-surface-900/40 backdrop-blur-sm rounded-r-lg flex items-center justify-center z-10">
+              <div class="flex flex-col items-center gap-2 p-4 text-center">
+                <ProgressRadial width="w-10" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+                <span class="text-sm font-medium">Running...</span>
+                {#if fundJob.duration_secs}
+                  <span class="text-xs text-surface-400">{fundJob.duration_secs.toFixed(1)}s elapsed</span>
+                {/if}
+              </div>
+            </div>
+          {/if}
+
           <div class="flex items-center justify-between mb-2">
             <h4 class="font-bold text-slate-900 dark:text-slate-100">yfinance/Sectors.app</h4>
-            <span class="badge text-xs {hasFinancials ? (staleFinancials ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
-              {hasFinancials ? (staleFinancials ? 'Stale' : 'Fresh') : 'No Data'}
-            </span>
+            <span class="badge text-xs {fundStatus.class}">{fundStatus.text}</span>
           </div>
           <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
-            <strong>Provides:</strong> P/E, P/B, ROE, ROA, debt ratios, margins
+            <strong>Provides:</strong> P/E, P/B, ROE, ROA, margins
           </div>
-          <div class="text-xs text-slate-500">
-            <strong>Used in:</strong> Fundamental tab, valuation metrics, fundamental score
+          <div class="text-xs text-slate-500 mb-2">
+            <strong>Used in:</strong> Fundamental tab, valuation metrics
           </div>
-          <div class="mt-2 text-xs font-mono text-slate-500">
-            Updated: {formatAsOf(freshness.financials_as_of)}
+          <div class="text-xs font-mono text-slate-500 mb-3">
+            Updated: {formatHoursAgo(freshness.financials_as_of)}
+          </div>
+
+          {#if fundError}
+            <div class="mb-3 p-2 rounded bg-error-500/20 text-error-500 text-xs">{fundError}</div>
+          {/if}
+
+          {#if fundJob && !fundLoading}
+            {@const isSuccess = fundJob.status === 'completed'}
+            {@const isFailed = fundJob.status === 'failed'}
+            <div class="mb-3 p-2 rounded text-xs {isSuccess ? 'bg-green-500/20 text-green-700 dark:text-green-300' : isFailed ? 'bg-error-500/20 text-error-500' : 'bg-tertiary-500/20 text-tertiary-700'}">
+              <div class="flex justify-between items-start gap-2">
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium flex items-center gap-2">
+                    {isSuccess ? '✓' : '✗'} {fundJob.status.toUpperCase()}
+                    {#if fundJob.duration_secs}
+                      <span class="text-surface-400 font-normal">({fundJob.duration_secs.toFixed(1)}s)</span>
+                    {/if}
+                  </div>
+                  {#if fundJob.output}
+                    <details class="mt-1">
+                      <summary class="cursor-pointer hover:opacity-80">View output</summary>
+                      <pre class="mt-1 p-2 bg-surface-900/30 rounded overflow-x-auto text-[10px] max-h-24 overflow-y-auto whitespace-pre-wrap">{fundJob.output}</pre>
+                    </details>
+                  {/if}
+                </div>
+                <button class="hover:opacity-70 text-lg leading-none" onclick={() => dismissSourceJob('fundamental')}>×</button>
+              </div>
+            </div>
+          {/if}
+
+          <div class="flex justify-end">
+            <button
+              class="btn btn-sm variant-ghost-primary"
+              onclick={() => triggerSource('fundamental')}
+              disabled={fundLoading || isRefreshingAll}
+            >
+              <span class="text-sm" class:animate-spin={fundLoading}>↻</span>
+              <span>Trigger</span>
+            </button>
           </div>
         </div>
+        {/if}
 
-        <div class="p-4 rounded-lg border-l-4 {hasScores ? (staleScores ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+        {#if true}
+          {@const scoreStatus = getStatusBadge(hasScores, staleScores)}
+          <div class="p-4 rounded-lg border-l-4 {getStatusBorder(hasScores, staleScores)}">
           <div class="flex items-center justify-between mb-2">
             <h4 class="font-bold text-slate-900 dark:text-slate-100">Computed Scores</h4>
-            <span class="badge text-xs {hasScores ? (staleScores ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
-              {hasScores ? (staleScores ? 'Stale' : 'Fresh') : 'No Data'}
-            </span>
+            <span class="badge text-xs {scoreStatus.class}">{scoreStatus.text}</span>
           </div>
           <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
             <strong>Provides:</strong> Technical, fundamental, sentiment, ML scores
           </div>
-          <div class="text-xs text-slate-500">
-            <strong>Used in:</strong> Score gauges, composite score, buy/sell signals
+          <div class="text-xs text-slate-500 mb-2">
+            <strong>Used in:</strong> Score gauges, composite score, signals
           </div>
-          <div class="mt-2 text-xs font-mono text-slate-500">
-            Updated: {formatAsOf(freshness.scores_as_of)}
+          <div class="text-xs font-mono text-slate-500 mb-3">
+            Updated: {formatHoursAgo(freshness.scores_as_of)}
+          </div>
+          <div class="flex justify-end">
+            <span class="text-xs text-surface-400 italic">Auto-computed from other sources</span>
           </div>
         </div>
+        {/if}
       </div>
     </div>
   {/if}
@@ -352,14 +534,12 @@
       <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
     </div>
   {:else if stock}
-    <!-- Tab Navigation using TabGroup -->
     <TabGroup>
       <Tab bind:group={tabSet} name="technical" value={0}>Technical</Tab>
       <Tab bind:group={tabSet} name="fundamental" value={1}>Fundamental</Tab>
     </TabGroup>
 
     {#if tabSet === 0}
-      <!-- Price Chart -->
       <div class="card p-4">
         <h3 class="h3 mb-4">Price Chart (60 Days)</h3>
         {#if prices.length > 0}
@@ -369,9 +549,7 @@
         {/if}
       </div>
 
-      <!-- Score Section -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Score Gauges -->
         <div class="card p-6">
           <h3 class="h3 mb-6">Score Breakdown</h3>
           {#if score}
@@ -383,15 +561,12 @@
               <ScoreGauge score={score.ml_score} label="ML" />
             </div>
 
-            <!-- Score interpretation -->
             <div class="mt-6 p-4 rounded-lg bg-surface-100-800-token">
               <p class="text-sm">
                 {#if score.composite_score >= 70}
-                  <span class="text-green-500 font-semibold">STRONG BUY</span> - Multiple strong signals
-                  aligned
+                  <span class="text-green-500 font-semibold">STRONG BUY</span> - Multiple strong signals aligned
                 {:else if score.composite_score >= 50}
-                  <span class="text-yellow-500 font-semibold">HOLD/WATCH</span> - Mixed signals, monitor
-                  closely
+                  <span class="text-yellow-500 font-semibold">HOLD/WATCH</span> - Mixed signals, monitor closely
                 {:else}
                   <span class="text-red-500 font-semibold">WEAK</span> - Unfavorable conditions
                 {/if}
@@ -402,7 +577,6 @@
           {/if}
         </div>
 
-        <!-- Stock Info -->
         <div class="card p-6">
           <h3 class="h3 mb-4">Stock Info</h3>
           <dl class="space-y-3">
@@ -445,7 +619,6 @@
         </div>
       </div>
 
-      <!-- Price History Table -->
       <div class="card p-4">
         <h3 class="h3 mb-4">Recent Price History</h3>
         {#if prices.length > 0}
@@ -480,7 +653,6 @@
         {/if}
       </div>
     {:else}
-      <!-- Fundamental Tab Content -->
       <div class="space-y-6">
         <div class="card p-4">
           <h3 class="h3 mb-4">Valuation Metrics</h3>
@@ -510,7 +682,6 @@
           </div>
         {/if}
 
-        <!-- Stock Info (same as technical tab for context) -->
         <div class="card p-6">
           <h3 class="h3 mb-4">Stock Info</h3>
           <dl class="space-y-3">

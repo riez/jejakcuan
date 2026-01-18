@@ -33,7 +33,8 @@ pub fn stock_routes() -> Router<Arc<AppState>> {
         .route("/:symbol/score", get(get_stock_score))
         .route("/:symbol/fundamentals", get(get_stock_fundamentals))
         .route("/:symbol/freshness", get(get_stock_freshness))
-        .route("/:symbol/refresh", post(refresh_stock_data))
+        .route("/:symbol/refresh", post(refresh_stock_all))
+        .route("/:symbol/refresh/:source_type", post(refresh_stock_source))
 }
 
 const SCORE_STALE_HOURS: i64 = 24;
@@ -575,15 +576,20 @@ pub struct RefreshStockResponse {
     pub message: String,
 }
 
-/// Refresh data for a specific stock by triggering all relevant scrapers
-async fn refresh_stock_data(
+#[derive(Debug, Serialize)]
+pub struct RefreshSourceResponse {
+    pub symbol: String,
+    pub source_type: String,
+    pub job: Job,
+}
+
+async fn refresh_stock_all(
     _user: AuthUser,
     State(state): State<Arc<AppState>>,
     Path(symbol): Path<String>,
 ) -> Result<Json<RefreshStockResponse>, (axum::http::StatusCode, String)> {
     let upper_symbol = symbol.to_uppercase();
 
-    // Verify stock exists
     repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -638,6 +644,72 @@ async fn refresh_stock_data(
     Ok(Json(RefreshStockResponse {
         symbol: upper_symbol,
         jobs,
-        message: "Data refresh started. Monitor job progress for completion.".to_string(),
+        message: "All data sources refresh started.".to_string(),
+    }))
+}
+
+async fn refresh_stock_source(
+    _user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path((symbol, source_type)): Path<(String, String)>,
+) -> Result<Json<RefreshSourceResponse>, (axum::http::StatusCode, String)> {
+    let upper_symbol = symbol.to_uppercase();
+    let source_type_lower = source_type.to_lowercase();
+
+    repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("Stock not found: {}", upper_symbol),
+            )
+        })?;
+
+    let (source_id, source_name, command) = match source_type_lower.as_str() {
+        "price" | "prices" => (
+            format!("stock-refresh-price-{}", upper_symbol),
+            format!("{} Price Data", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli price --days 60 {}",
+                upper_symbol
+            ),
+        ),
+        "broker" | "broker_flow" => (
+            format!("stock-refresh-broker-{}", upper_symbol),
+            format!("{} Broker Flow", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli broker --days 30 {}",
+                upper_symbol
+            ),
+        ),
+        "fundamental" | "fundamentals" => (
+            format!("stock-refresh-fundamental-{}", upper_symbol),
+            format!("{} Fundamentals", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli fundamental {}",
+                upper_symbol
+            ),
+        ),
+        _ => {
+            return Err((
+                axum::http::StatusCode::BAD_REQUEST,
+                format!(
+                    "Invalid source type: {}. Valid types: price, broker, fundamental",
+                    source_type
+                ),
+            ));
+        }
+    };
+
+    let job = state
+        .job_manager
+        .spawn_job(source_id, source_name, command)
+        .await;
+
+    Ok(Json(RefreshSourceResponse {
+        symbol: upper_symbol,
+        source_type: source_type_lower,
+        job,
     }))
 }
