@@ -1034,3 +1034,121 @@ fn generate_valuation_conclusion(
 
     (Some(valuation), Some(conclusion))
 }
+
+#[allow(dead_code)]
+fn calculate_trading_signal(
+    composite_score: f64,
+    technical: &TechnicalResponse,
+    valuation: &ValuationResponse,
+    broker: &BrokerSummaryResponse,
+    current_price: f64,
+) -> SignalAnalysis {
+    let signal = match composite_score {
+        c if c >= 75.0 => TradingSignal::StrongBuy,
+        c if c >= 60.0 => TradingSignal::Buy,
+        c if c >= 45.0 => TradingSignal::Hold,
+        c if c >= 30.0 => TradingSignal::Sell,
+        _ => TradingSignal::StrongSell,
+    };
+
+    let target_price = Some(valuation.fair_price_range.high);
+
+    let stop_loss = technical
+        .support
+        .first()
+        .copied()
+        .unwrap_or(current_price * 0.95);
+
+    let upside = target_price.map(|t| ((t - current_price) / current_price) * 100.0);
+    let downside = Some(((current_price - stop_loss) / current_price) * 100.0);
+
+    let risk_reward = match (upside, downside) {
+        (Some(up), Some(down)) if down.abs() > 0.01 => Some(up / down.abs()),
+        _ => None,
+    };
+
+    let thesis = generate_thesis(broker, technical, valuation);
+    let key_catalysts = extract_catalysts(broker, technical);
+    let key_risks = extract_risks(technical, valuation);
+
+    SignalAnalysis {
+        signal,
+        conviction_percent: composite_score,
+        thesis,
+        target_price,
+        stop_loss: Some(stop_loss),
+        upside_percent: upside,
+        downside_percent: downside,
+        risk_reward_ratio: risk_reward,
+        key_catalysts,
+        key_risks,
+    }
+}
+
+fn generate_thesis(
+    broker: &BrokerSummaryResponse,
+    technical: &TechnicalResponse,
+    valuation: &ValuationResponse,
+) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(inst) = &broker.institutional_analysis {
+        if inst.is_accumulating && inst.coordinated_buying {
+            parts.push("Strong institutional accumulation detected".to_string());
+        } else if inst.is_accumulating {
+            parts.push("Institutional accumulation ongoing".to_string());
+        }
+    }
+
+    if technical.rsi < 30.0 {
+        parts.push("oversold on RSI".to_string());
+    } else if technical.rsi > 70.0 {
+        parts.push("overbought on RSI".to_string());
+    }
+
+    let margin_of_safety =
+        ((valuation.fair_price_range.high - technical.last_price) / technical.last_price) * 100.0;
+    if margin_of_safety > 20.0 {
+        parts.push(format!("{:.0}% margin of safety", margin_of_safety));
+    }
+
+    if parts.is_empty() {
+        "Mixed signals - wait for clearer setup".to_string()
+    } else {
+        parts.join(" with ")
+    }
+}
+
+fn extract_catalysts(broker: &BrokerSummaryResponse, technical: &TechnicalResponse) -> Vec<String> {
+    let mut catalysts = Vec::new();
+
+    if let Some(inst) = &broker.institutional_analysis {
+        if inst.coordinated_buying {
+            catalysts.push("Multiple institutions accumulating".to_string());
+        }
+        if inst.foreign_net_5_day > 0.0 {
+            catalysts.push("Foreign buying interest".to_string());
+        }
+    }
+
+    if technical.macd_signal == "bullish" {
+        catalysts.push("MACD bullish crossover".to_string());
+    }
+
+    catalysts
+}
+
+fn extract_risks(technical: &TechnicalResponse, valuation: &ValuationResponse) -> Vec<String> {
+    let mut risks = Vec::new();
+
+    if technical.rsi > 70.0 {
+        risks.push("Overbought conditions".to_string());
+    }
+
+    let is_expensive = valuation.fair_price_range.low > technical.last_price * 0.9;
+    if is_expensive {
+        risks.push("Valuation stretched".to_string());
+    }
+
+    risks
+}
