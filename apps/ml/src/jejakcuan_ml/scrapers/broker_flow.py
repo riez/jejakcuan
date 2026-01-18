@@ -94,7 +94,7 @@ class BrokerFlowScraper(BaseScraper):
 
         # Scrape each stock
         for i, symbol in enumerate(symbols):
-            logger.info(f"[{i+1}/{len(symbols)}] Scraping broker flow for {symbol}")
+            logger.info(f"[{i + 1}/{len(symbols)}] Scraping broker flow for {symbol}")
             try:
                 transactions = await self._fetch_broker_flow(symbol, start_date, end_date)
                 if transactions:
@@ -221,8 +221,26 @@ class BrokerFlowScraper(BaseScraper):
             return []
 
         def parse_int(text: str) -> int:
-            cleaned = text.replace(",", "").replace(" ", "").strip()
-            return int(cleaned) if cleaned else 0
+            cleaned = text.replace(",", "").replace(" ", "").strip().upper()
+            if not cleaned or cleaned == "-":
+                return 0
+            multiplier = 1
+            if cleaned.endswith("T"):
+                multiplier = 1_000_000_000_000
+                cleaned = cleaned[:-1]
+            elif cleaned.endswith("B"):
+                multiplier = 1_000_000_000
+                cleaned = cleaned[:-1]
+            elif cleaned.endswith("M"):
+                multiplier = 1_000_000
+                cleaned = cleaned[:-1]
+            elif cleaned.endswith("K"):
+                multiplier = 1_000
+                cleaned = cleaned[:-1]
+            try:
+                return int(float(cleaned) * multiplier)
+            except ValueError:
+                return 0
 
         def parse_value(text: str) -> Decimal:
             cleaned = text.replace(",", "").strip()
@@ -352,16 +370,32 @@ class BrokerFlowScraper(BaseScraper):
         """
         transactions: list[BrokerTransaction] = []
 
-        # IDX broker transaction API
         url = f"{self.IDX_BASE}/primary/TradingSummary/GetBrokerSummary"
         params = {"code": symbol}
 
-        data = await self._fetch_json(url, params=params)
-        if data and "Results" in data:
-            for item in data["Results"]:
-                tx = self._parse_idx_item(symbol, item)
-                if tx and start_date <= tx.trade_date <= end_date:
-                    transactions.append(tx)
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
+            "Origin": "https://www.idx.co.id",
+            "Referer": f"https://www.idx.co.id/en/market-data/trading-summary/broker-summary?code={symbol}",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+
+        client = await self._get_client()
+        try:
+            await self._rate_limit()
+            response = await client.get(url, params=params, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                if data and "Results" in data:
+                    for item in data["Results"]:
+                        tx = self._parse_idx_item(symbol, item)
+                        if tx and start_date <= tx.trade_date <= end_date:
+                            transactions.append(tx)
+            elif response.status_code == 403:
+                logger.debug(f"IDX blocked request for {symbol} (403)")
+        except Exception as e:
+            logger.debug(f"IDX broker fetch failed for {symbol}: {e}")
 
         return transactions
 
