@@ -440,13 +440,11 @@ async fn get_broker_flow_internal(
             .await
             .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let institutional_analysis =
-        calculate_institutional_flow_analysis(&aggregates, &daily_summaries);
-
     let mut foreign_net = 0.0;
     let mut domestic_net = 0.0;
     let mut total_net = 0.0;
     let mut total_traded = 0.0;
+    let mut total_volume: i64 = 0;
 
     for a in &aggregates {
         let buy_value = a.buy_value.to_f64().unwrap_or(0.0);
@@ -455,6 +453,7 @@ async fn get_broker_flow_internal(
 
         total_traded += buy_value + sell_value;
         total_net += net_value;
+        total_volume += a.buy_volume + a.sell_volume;
 
         if a.category == "foreign_institutional" {
             foreign_net += net_value;
@@ -534,6 +533,17 @@ async fn get_broker_flow_internal(
             }
         })
         .collect();
+
+    let avg_daily_volume = total_volume / days.max(1) as i64;
+    let suspicious =
+        detect_suspicious_activity(&big_buyers, &big_sellers, total_volume, avg_daily_volume);
+
+    let mut institutional_analysis =
+        calculate_institutional_flow_analysis(&aggregates, &daily_summaries);
+
+    if let Some(ref mut inst) = institutional_analysis {
+        inst.suspicious_activity = suspicious;
+    }
 
     Ok(BrokerSummaryResponse {
         big_buyers,
@@ -1151,4 +1161,46 @@ fn extract_risks(technical: &TechnicalResponse, valuation: &ValuationResponse) -
     }
 
     risks
+}
+
+fn detect_suspicious_activity(
+    big_buyers: &[BrokerInfo],
+    big_sellers: &[BrokerInfo],
+    total_volume: i64,
+    avg_daily_volume: i64,
+) -> Option<SuspiciousActivity> {
+    use std::collections::HashSet;
+
+    let buy_codes: HashSet<_> = big_buyers.iter().map(|b| b.code.as_str()).collect();
+    let sell_codes: HashSet<_> = big_sellers.iter().map(|b| b.code.as_str()).collect();
+
+    let both_sides: Vec<&str> = buy_codes.intersection(&sell_codes).copied().collect();
+
+    if !both_sides.is_empty() {
+        return Some(SuspiciousActivity {
+            detected: true,
+            activity_type: "wash_trading_signal".to_string(),
+            description: format!(
+                "Broker(s) {} appear on both buy and sell sides - possible wash trading",
+                both_sides.join(", ")
+            ),
+            severity: "medium".to_string(),
+            brokers_involved: both_sides.iter().map(|s| s.to_string()).collect(),
+        });
+    }
+
+    if avg_daily_volume > 0 && total_volume > avg_daily_volume * 3 {
+        return Some(SuspiciousActivity {
+            detected: true,
+            activity_type: "unusual_volume".to_string(),
+            description: format!(
+                "Volume {}x above average - unusual activity",
+                total_volume / avg_daily_volume.max(1)
+            ),
+            severity: "low".to_string(),
+            brokers_involved: vec![],
+        });
+    }
+
+    None
 }
