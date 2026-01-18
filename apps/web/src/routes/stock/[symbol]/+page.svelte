@@ -273,7 +273,7 @@
             {/if}
           </button>
           <a href="/admin/data-status" class="btn btn-sm variant-ghost-primary">
-            Admin Panel
+            Data Source Panel
           </a>
         </div>
       </div>
