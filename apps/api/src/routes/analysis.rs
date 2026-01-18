@@ -33,6 +33,39 @@ pub fn analysis_routes() -> Router<Arc<AppState>> {
 
 // ============== Types ==============
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradingSignal {
+    StrongBuy,
+    Buy,
+    Hold,
+    Sell,
+    StrongSell,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignalAnalysis {
+    pub signal: TradingSignal,
+    pub conviction_percent: f64,
+    pub thesis: String,
+    pub target_price: Option<f64>,
+    pub stop_loss: Option<f64>,
+    pub upside_percent: Option<f64>,
+    pub downside_percent: Option<f64>,
+    pub risk_reward_ratio: Option<f64>,
+    pub key_catalysts: Vec<String>,
+    pub key_risks: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SuspiciousActivity {
+    pub detected: bool,
+    pub activity_type: String,
+    pub description: String,
+    pub severity: String,
+    pub brokers_involved: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BrokerInfo {
     pub code: String,
@@ -74,6 +107,7 @@ pub struct InstitutionalFlowAnalysis {
     pub top_accumulators: Vec<AccumulatorInfo>, // Top institutional accumulators
     pub signal_strength: String,
     pub signal_description: String,
+    pub suspicious_activity: Option<SuspiciousActivity>,
 }
 
 #[derive(Debug, Serialize)]
@@ -701,6 +735,7 @@ fn calculate_institutional_flow_analysis(
         top_accumulators,
         signal_strength: signal_strength.to_string(),
         signal_description,
+        suspicious_activity: None, // Will be populated by detect_suspicious_activity
     })
 }
 
