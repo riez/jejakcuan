@@ -10,4 +10,6 @@ export { default as IndexSummary } from './IndexSummary.svelte';
 export { default as SignalCard } from './SignalCard.svelte';
 export { default as SignalFilters } from './SignalFilters.svelte';
 export { default as StockAnalysis } from './StockAnalysis.svelte';
+export { default as StickyStockHeader } from './StickyStockHeader.svelte';
+export { default as AnalysisSummary } from './AnalysisSummary.svelte';
 export * from './BrokerFlow';

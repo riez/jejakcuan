@@ -81,3 +81,68 @@ export interface OverallConclusion {
   weaknesses: string[];
   strategy: { traders: string; investors: string; valueInvestors: string };
 }
+
+export type TradingSignal = 'StrongBuy' | 'Buy' | 'Hold' | 'Sell' | 'StrongSell';
+
+export interface SignalAnalysis {
+  signal: TradingSignal;
+  conviction_percent: number;
+  thesis: string;
+  target_price: number | null;
+  stop_loss: number | null;
+  upside_percent: number | null;
+  downside_percent: number | null;
+  risk_reward_ratio: number | null;
+  key_catalysts: string[];
+  key_risks: string[];
+}
+
+export interface SuspiciousActivity {
+  detected: boolean;
+  activity_type: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  brokers_involved: string[];
+}
+
+export interface CompanyProfile {
+  symbol: string;
+  name: string;
+  description: string | null;
+  business_summary: string | null;
+  sector: string | null;
+  subsector: string | null;
+  website: string | null;
+  employee_count: number | null;
+}
+
+export interface Subsidiary {
+  name: string;
+  ownership_percent: number;
+  business_type: string | null;
+  is_consolidated: boolean;
+}
+
+export interface CorporateAction {
+  id: number;
+  symbol: string;
+  action_type: string;
+  announced_date: string;
+  effective_date: string | null;
+  ex_date: string | null;
+  description: string;
+  value: number | null;
+  status: string;
+}
+
+export interface NewsItem {
+  id: number;
+  symbol: string;
+  title: string;
+  summary: string | null;
+  source: string;
+  url: string;
+  published_at: string;
+  sentiment: string | null;
+  keywords: string[];
+}
