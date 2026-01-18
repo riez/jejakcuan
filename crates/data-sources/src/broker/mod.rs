@@ -1,4 +1,4 @@
-//! Broker summary data and analysis for bandarmology
+//! Broker summary data and institutional flow analysis
 //!
 //! Provides:
 //! - Broker classification (foreign/local institutional, retail)

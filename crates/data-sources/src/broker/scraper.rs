@@ -1,4 +1,4 @@
-//! Broker summary scraper for bandarmology analysis
+//! Broker summary scraper for institutional flow analysis
 //!
 //! Data sources:
 //! - IDX broker summary data (idxdata3.co.id)
@@ -67,7 +67,11 @@ impl BrokerScraper {
         // Try IDX data first
         match self.fetch_idx_broker_data(symbol, date).await {
             Ok(summaries) if !summaries.is_empty() => {
-                info!("Fetched {} broker summaries for {} from IDX", summaries.len(), symbol);
+                info!(
+                    "Fetched {} broker summaries for {} from IDX",
+                    summaries.len(),
+                    symbol
+                );
                 return Ok(summaries);
             }
             Ok(_) => {
@@ -99,9 +103,10 @@ impl BrokerScraper {
 
         self.rate_limit().await;
 
-        let response = self.client.get(&url).send().await.map_err(|e| {
-            DataSourceError::ApiError(format!("Failed to fetch IDX data: {}", e))
-        })?;
+        let response =
+            self.client.get(&url).send().await.map_err(|e| {
+                DataSourceError::ApiError(format!("Failed to fetch IDX data: {}", e))
+            })?;
 
         if !response.status().is_success() {
             return Ok(vec![]);
@@ -213,7 +218,9 @@ impl BrokerScraper {
                     if cells.len() >= 5 {
                         let broker_code = cells[0].text().collect::<String>().trim().to_string();
 
-                        if broker_code.len() == 2 && broker_code.chars().all(|c| c.is_alphanumeric()) {
+                        if broker_code.len() == 2
+                            && broker_code.chars().all(|c| c.is_alphanumeric())
+                        {
                             let buy_volume = parse_number(&cells[1].text().collect::<String>());
                             let buy_value = parse_decimal(&cells[2].text().collect::<String>());
                             let sell_volume = parse_number(&cells[3].text().collect::<String>());

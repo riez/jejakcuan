@@ -253,6 +253,31 @@ interface PriceRange {
   high: number;
 }
 
+interface AccumulatorInfo {
+  broker_code: string;
+  broker_name: string | null;
+  category: string;
+  net_value: number;
+  net_volume: number;
+  is_foreign: boolean;
+}
+
+interface InstitutionalFlowAnalysis {
+  accumulation_score: number;
+  is_accumulating: boolean;
+  coordinated_buying: boolean;
+  days_accumulated: number;
+  net_5_day: number;
+  net_20_day: number;
+  institutional_net_5_day: number;
+  institutional_net_20_day: number;
+  foreign_net_5_day: number;
+  foreign_net_20_day: number;
+  top_accumulators: AccumulatorInfo[];
+  signal_strength: string;
+  signal_description: string;
+}
+
 interface BrokerSummaryResponse {
   big_buyers: BrokerInfo[];
   big_sellers: BrokerInfo[];
@@ -260,6 +285,7 @@ interface BrokerSummaryResponse {
   price_range: PriceRange;
   foreign_net: number;
   domestic_net: number;
+  institutional_analysis: InstitutionalFlowAnalysis | null;
 }
 
 interface IchimokuInfo {
@@ -610,6 +636,8 @@ export type {
   FullAnalysisResponse,
   TechnicalResponse,
   BrokerSummaryResponse,
+  InstitutionalFlowAnalysis,
+  AccumulatorInfo,
   ValuationResponse,
   ConclusionResponse,
   BrokerInfo,

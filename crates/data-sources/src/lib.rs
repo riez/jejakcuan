@@ -4,7 +4,7 @@
 //! - IDX (Indonesia Stock Exchange) data via Yahoo Finance
 //! - Yahoo Finance for stock quotes and historical data
 //! - Sectors.app for Indonesian market data and financials
-//! - Broker summary data for bandarmology analysis
+//! - Broker summary data for institutional flow analysis
 //! - News sources for sentiment analysis
 //! - Shareholding data from KSEI/OJK for ownership tracking
 
@@ -21,18 +21,18 @@ pub use broker::{
 };
 pub use error::DataSourceError;
 pub use sectors::{
-    CompaniesResponse, CompanyFinancials, CompanyQuery, DailyTransaction, Industry,
-    KeyExecutive, MajorShareholder, SectorsClient, SectorsCompany, SectorsPagination,
-    StockMover, Subsector, TopMovers,
-};
-pub use twelvedata::{
-    ExchangeInfo, Interval, LatestPrice, MarketMover, MarketMoversResponse, PriceUpdate,
-    Quote, StockInfo, TimeSeriesMeta, TimeSeriesPoint, TimeSeriesResponse,
-    TwelveDataClient, TwelveDataWebSocket, WebSocketEvent,
+    CompaniesResponse, CompanyFinancials, CompanyQuery, DailyTransaction, Industry, KeyExecutive,
+    MajorShareholder, SectorsClient, SectorsCompany, SectorsPagination, StockMover, Subsector,
+    TopMovers,
 };
 pub use shareholding::{
     ConcentrationMetrics, InsiderActivityScore, InstitutionalFlow, OwnershipChange, Shareholder,
     ShareholderType, ShareholdingScore, ShareholdingScraper, ShareholdingSnapshot,
     ShareholdingSource,
+};
+pub use twelvedata::{
+    ExchangeInfo, Interval, LatestPrice, MarketMover, MarketMoversResponse, PriceUpdate, Quote,
+    StockInfo, TimeSeriesMeta, TimeSeriesPoint, TimeSeriesResponse, TwelveDataClient,
+    TwelveDataWebSocket, WebSocketEvent,
 };
 pub use yahoo::YahooFinanceClient;

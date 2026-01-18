@@ -117,7 +117,7 @@ class IDXScraper(BaseScraper):
 
         # Scrape each stock
         for i, symbol in enumerate(symbols):
-            logger.info(f"[{i+1}/{len(symbols)}] Scraping {symbol}")
+            logger.info(f"[{i + 1}/{len(symbols)}] Scraping {symbol}")
             try:
                 # Get stock info and financial data
                 info = await self._fetch_stock_info(symbol)
@@ -233,6 +233,257 @@ class IDXScraper(BaseScraper):
 
         logger.info(f"Found {len(symbols)} ISSI stocks")
         return symbols
+
+    async def fetch_all_idx_stocks(self, sharia_only: bool = False) -> list[StockInfo]:
+        """Fetch all IDX listed stocks.
+
+        Attempts to fetch from IDX API first, falls back to comprehensive list
+        if API is blocked (Cloudflare protection).
+
+        Args:
+            sharia_only: If True, only fetch ISSI (sharia) stocks
+
+        Returns:
+            List of StockInfo for all stocks
+        """
+        stocks: list[StockInfo] = []
+        page = 1
+        page_size = 100
+
+        while True:
+            url = f"{self.IDX_BASE}/primary/ListedCompany/GetListedCompany"
+            params: dict[str, str | int] = {"page": page, "pageSize": page_size}
+            if sharia_only:
+                params["sharia"] = "true"
+
+            response = await self._fetch_url(url, params=params)
+            if not response:
+                break
+
+            try:
+                data = response.json()
+                results = data.get("Results", [])
+                if not results:
+                    break
+
+                for item in results:
+                    symbol = item.get("Code", "")
+                    if not symbol:
+                        continue
+
+                    stocks.append(
+                        StockInfo(
+                            symbol=symbol,
+                            name=item.get("Name", symbol),
+                            sector=item.get("Sector"),
+                            subsector=item.get("SubSector"),
+                            listing_date=self._parse_date(item.get("ListingDate")),
+                            market_cap=item.get("MarketCap"),
+                            shares_outstanding=item.get("SharesOutstanding"),
+                        )
+                    )
+
+                if len(results) < page_size:
+                    break
+                page += 1
+
+            except Exception as e:
+                logger.warning(f"Failed to parse IDX stock list page {page}: {e}")
+                break
+
+        if not stocks:
+            logger.info("IDX API unavailable, using fallback stock list")
+            stocks = self._get_fallback_stock_list(sharia_only)
+
+        logger.info(f"Found {len(stocks)} IDX stocks (sharia_only={sharia_only})")
+        return stocks
+
+    def _get_fallback_stock_list(self, sharia_only: bool = False) -> list[StockInfo]:
+        """Get comprehensive fallback stock list.
+
+        This list is used when IDX API is blocked (Cloudflare protection).
+        Includes major stocks across all sectors.
+
+        Args:
+            sharia_only: If True, exclude non-sharia stocks (conventional banks, etc.)
+
+        Returns:
+            List of StockInfo with basic data
+        """
+        stock_data = [
+            # Banking - Sharia compliant
+            ("BBCA", "Bank Central Asia Tbk", "Banking", "Bank"),
+            ("BMRI", "Bank Mandiri (Persero) Tbk", "Banking", "Bank"),
+            ("BBRI", "Bank Rakyat Indonesia (Persero) Tbk", "Banking", "Bank"),
+            ("BBNI", "Bank Negara Indonesia (Persero) Tbk", "Banking", "Bank"),
+            ("BRIS", "Bank Syariah Indonesia Tbk", "Banking", "Islamic Bank"),
+            ("BTPN", "Bank BTPN Tbk", "Banking", "Bank"),
+            ("ARTO", "Bank Jago Tbk", "Banking", "Digital Bank"),
+            ("BBTN", "Bank Tabungan Negara (Persero) Tbk", "Banking", "Bank"),
+            ("NISP", "Bank OCBC NISP Tbk", "Banking", "Bank"),
+            ("MEGA", "Bank Mega Tbk", "Banking", "Bank"),
+            ("PNBN", "Bank Pan Indonesia Tbk", "Banking", "Bank"),
+            ("BGTG", "Bank Ganesha Tbk", "Banking", "Bank"),
+            ("BNBA", "Bank Bumi Arta Tbk", "Banking", "Bank"),
+            ("BDMN", "Bank Danamon Indonesia Tbk", "Banking", "Bank"),
+            ("BNLI", "Bank Permata Tbk", "Banking", "Bank"),
+            ("BJTM", "Bank Pembangunan Daerah Jawa Timur Tbk", "Banking", "Regional Bank"),
+            ("BJBR", "Bank Pembangunan Daerah Jawa Barat Tbk", "Banking", "Regional Bank"),
+            # Telecommunications
+            ("TLKM", "Telkom Indonesia (Persero) Tbk", "Telecommunications", "Telecom"),
+            ("EXCL", "XL Axiata Tbk", "Telecommunications", "Telecom"),
+            ("ISAT", "Indosat Tbk", "Telecommunications", "Telecom"),
+            ("TOWR", "Sarana Menara Nusantara Tbk", "Telecommunications", "Tower"),
+            ("TBIG", "Tower Bersama Infrastructure Tbk", "Telecommunications", "Tower"),
+            ("MTEL", "Dayamitra Telekomunikasi Tbk", "Telecommunications", "Tower"),
+            # Mining & Energy
+            ("ADRO", "Adaro Energy Indonesia Tbk", "Mining", "Coal"),
+            ("PTBA", "Bukit Asam Tbk", "Mining", "Coal"),
+            ("ITMG", "Indo Tambangraya Megah Tbk", "Mining", "Coal"),
+            ("ANTM", "Aneka Tambang Tbk", "Mining", "Diversified Metals"),
+            ("INCO", "Vale Indonesia Tbk", "Mining", "Nickel"),
+            ("TINS", "Timah Tbk", "Mining", "Tin"),
+            ("MDKA", "Merdeka Copper Gold Tbk", "Mining", "Copper/Gold"),
+            ("MEDC", "Medco Energi Internasional Tbk", "Energy", "Oil & Gas"),
+            ("BUMI", "Bumi Resources Tbk", "Mining", "Coal"),
+            ("DSSA", "Dian Swastatika Sentosa Tbk", "Mining", "Coal"),
+            ("PTRO", "Petrosea Tbk", "Mining", "Mining Services"),
+            ("GEMS", "Golden Energy Mines Tbk", "Mining", "Coal"),
+            ("HRUM", "Harum Energy Tbk", "Mining", "Coal"),
+            ("BRMS", "Bumi Resources Minerals Tbk", "Mining", "Minerals"),
+            ("BYAN", "Bayan Resources Tbk", "Mining", "Coal"),
+            # Consumer Goods
+            ("UNVR", "Unilever Indonesia Tbk", "Consumer", "FMCG"),
+            ("ICBP", "Indofood CBP Sukses Makmur Tbk", "Consumer", "Food"),
+            ("INDF", "Indofood Sukses Makmur Tbk", "Consumer", "Food"),
+            ("MYOR", "Mayora Indah Tbk", "Consumer", "Food"),
+            ("KLBF", "Kalbe Farma Tbk", "Healthcare", "Pharma"),
+            ("SIDO", "Industri Jamu dan Farmasi Sido Muncul Tbk", "Healthcare", "Pharma"),
+            ("HMSP", "HM Sampoerna Tbk", "Consumer", "Tobacco"),
+            ("GGRM", "Gudang Garam Tbk", "Consumer", "Tobacco"),
+            ("AMRT", "Sumber Alfaria Trijaya Tbk", "Consumer", "Retail"),
+            ("ACES", "Ace Hardware Indonesia Tbk", "Consumer", "Retail"),
+            ("LPPF", "Matahari Department Store Tbk", "Consumer", "Retail"),
+            ("MAPI", "Mitra Adiperkasa Tbk", "Consumer", "Retail"),
+            ("ERAA", "Erajaya Swasembada Tbk", "Consumer", "Retail"),
+            # Property & Real Estate
+            ("BSDE", "Bumi Serpong Damai Tbk", "Property", "Developer"),
+            ("CTRA", "Ciputra Development Tbk", "Property", "Developer"),
+            ("SMRA", "Summarecon Agung Tbk", "Property", "Developer"),
+            ("PWON", "Pakuwon Jati Tbk", "Property", "Developer"),
+            ("ASRI", "Alam Sutera Realty Tbk", "Property", "Developer"),
+            ("LPKR", "Lippo Karawaci Tbk", "Property", "Developer"),
+            ("APLN", "Agung Podomoro Land Tbk", "Property", "Developer"),
+            # Infrastructure & Construction
+            ("JSMR", "Jasa Marga (Persero) Tbk", "Infrastructure", "Toll Road"),
+            ("WIKA", "Wijaya Karya (Persero) Tbk", "Infrastructure", "Construction"),
+            ("PTPP", "PP (Persero) Tbk", "Infrastructure", "Construction"),
+            ("WSKT", "Waskita Karya (Persero) Tbk", "Infrastructure", "Construction"),
+            ("ADHI", "Adhi Karya (Persero) Tbk", "Infrastructure", "Construction"),
+            ("TOTL", "Total Bangun Persada Tbk", "Infrastructure", "Construction"),
+            ("ACST", "Acset Indonusa Tbk", "Infrastructure", "Construction"),
+            ("WTON", "Wijaya Karya Beton Tbk", "Infrastructure", "Concrete"),
+            # Automotive & Components
+            ("ASII", "Astra International Tbk", "Industrial", "Conglomerate"),
+            ("UNTR", "United Tractors Tbk", "Industrial", "Heavy Equipment"),
+            ("SMSM", "Selamat Sempurna Tbk", "Industrial", "Auto Parts"),
+            ("AUTO", "Astra Otoparts Tbk", "Industrial", "Auto Parts"),
+            ("GJTL", "Gajah Tunggal Tbk", "Industrial", "Tires"),
+            ("IMAS", "Indomobil Sukses Internasional Tbk", "Industrial", "Automotive"),
+            ("DRMA", "Dharma Polimetal Tbk", "Industrial", "Auto Parts"),
+            ("BOLT", "Garuda Metalindo Tbk", "Industrial", "Auto Parts"),
+            # Cement & Basic Materials
+            ("SMGR", "Semen Indonesia (Persero) Tbk", "Basic Materials", "Cement"),
+            ("INTP", "Indocement Tunggal Prakarsa Tbk", "Basic Materials", "Cement"),
+            ("INKP", "Indah Kiat Pulp & Paper Tbk", "Basic Materials", "Paper"),
+            ("TKIM", "Pabrik Kertas Tjiwi Kimia Tbk", "Basic Materials", "Paper"),
+            # Technology & Media
+            ("GOTO", "GoTo Gojek Tokopedia Tbk", "Technology", "E-commerce"),
+            ("BUKA", "Bukalapak.com Tbk", "Technology", "E-commerce"),
+            ("EMTK", "Elang Mahkota Teknologi Tbk", "Media", "Conglomerate"),
+            ("SCMA", "Surya Citra Media Tbk", "Media", "Broadcasting"),
+            ("MNCN", "Media Nusantara Citra Tbk", "Media", "Broadcasting"),
+            ("DCII", "DCI Indonesia Tbk", "Technology", "Data Center"),
+            # Plantation & Agriculture
+            ("AALI", "Astra Agro Lestari Tbk", "Plantation", "Palm Oil"),
+            ("LSIP", "PP London Sumatra Indonesia Tbk", "Plantation", "Palm Oil"),
+            ("SIMP", "Salim Ivomas Pratama Tbk", "Plantation", "Palm Oil"),
+            ("SGRO", "Sampoerna Agro Tbk", "Plantation", "Palm Oil"),
+            # Transportation
+            ("BIRD", "Blue Bird Tbk", "Transportation", "Taxi"),
+            ("GIAA", "Garuda Indonesia (Persero) Tbk", "Transportation", "Airline"),
+            ("TMAS", "Pelayaran Tempuran Emas Tbk", "Transportation", "Shipping"),
+            ("ASSA", "Adi Sarana Armada Tbk", "Transportation", "Logistics"),
+            # Prajogo Pangestu Group
+            ("BRPT", "Barito Pacific Tbk", "Petrochemical", "Petrochemical"),
+            ("TPIA", "Chandra Asri Petrochemical Tbk", "Petrochemical", "Petrochemical"),
+            ("CUAN", "Petrindo Jaya Kreasi Tbk", "Energy", "Coal"),
+            ("BREN", "Barito Renewables Energy Tbk", "Energy", "Renewables"),
+            # Oil & Gas
+            ("PGAS", "Perusahaan Gas Negara Tbk", "Energy", "Gas Distribution"),
+            ("AKRA", "AKR Corporindo Tbk", "Energy", "Distribution"),
+            ("ELSA", "Elnusa Tbk", "Energy", "Oil Services"),
+            # Poultry & Aquaculture
+            ("JPFA", "Japfa Comfeed Indonesia Tbk", "Agriculture", "Poultry"),
+            ("CPIN", "Charoen Pokphand Indonesia Tbk", "Agriculture", "Poultry"),
+            ("MAIN", "Malindo Feedmill Tbk", "Agriculture", "Poultry"),
+            # Finance (non-bank) - excluded from sharia
+            ("ADMF", "Adira Dinamika Multi Finance Tbk", "Finance", "Multifinance"),
+            ("BFIN", "BFI Finance Indonesia Tbk", "Finance", "Multifinance"),
+            ("WOMF", "Wahana Ottomitra Multiartha Tbk", "Finance", "Multifinance"),
+            # Others
+            ("BATA", "Sepatu Bata Tbk", "Consumer", "Footwear"),
+            ("ADES", "Akasha Wira International Tbk", "Consumer", "Beverages"),
+            ("UNSP", "Bakrie Sumatera Plantations Tbk", "Plantation", "Palm Oil"),
+            ("SRIL", "Sri Rejeki Isman Tbk", "Industrial", "Textile"),
+        ]
+
+        non_sharia = {"ADMF", "BFIN", "WOMF"}
+
+        stocks = []
+        for symbol, name, sector, subsector in stock_data:
+            if sharia_only and symbol in non_sharia:
+                continue
+            stocks.append(
+                StockInfo(
+                    symbol=symbol,
+                    name=name,
+                    sector=sector,
+                    subsector=subsector,
+                )
+            )
+
+        return stocks
+
+    async def sync_stocks_to_db(self, sharia_only: bool = False) -> int:
+        """Sync all IDX stocks to database.
+
+        Args:
+            sharia_only: If True, only sync ISSI (sharia) stocks
+
+        Returns:
+            Number of stocks synced
+        """
+        stocks = await self.fetch_all_idx_stocks(sharia_only=sharia_only)
+        count = 0
+
+        for stock in stocks:
+            try:
+                self.db.upsert_stock(
+                    symbol=stock.symbol,
+                    name=stock.name,
+                    sector=stock.sector,
+                    subsector=stock.subsector,
+                    listing_date=stock.listing_date,
+                    market_cap=stock.market_cap,
+                    is_active=True,
+                )
+                count += 1
+            except Exception as e:
+                logger.warning(f"Failed to upsert stock {stock.symbol}: {e}")
+
+        logger.info(f"Synced {count} stocks to database")
+        return count
 
     async def _fetch_stock_info(self, symbol: str) -> StockInfo | None:
         """Fetch basic stock info from IDX.

@@ -3,6 +3,31 @@
  * Used for broker summary, technical analysis, valuation estimates, and overall conclusions
  */
 
+export interface AccumulatorInfo {
+  brokerCode: string;
+  brokerName: string | null;
+  category: string;
+  netValue: number;
+  netVolume: number;
+  isForeign: boolean;
+}
+
+export interface InstitutionalFlowAnalysis {
+  accumulationScore: number;
+  isAccumulating: boolean;
+  coordinatedBuying: boolean;
+  daysAccumulated: number;
+  net5Day: number;
+  net20Day: number;
+  institutionalNet5Day: number;
+  institutionalNet20Day: number;
+  foreignNet5Day: number;
+  foreignNet20Day: number;
+  topAccumulators: AccumulatorInfo[];
+  signalStrength: 'strong' | 'moderate' | 'weak' | 'neutral' | 'distribution';
+  signalDescription: string;
+}
+
 export interface BrokerSummary {
   bigBuyers: BrokerInfo[];
   bigSellers: BrokerInfo[];
@@ -10,6 +35,7 @@ export interface BrokerSummary {
   priceRange: { low: number; high: number };
   foreignNet?: number;
   domesticNet?: number;
+  institutionalAnalysis?: InstitutionalFlowAnalysis | null;
 }
 
 export interface BrokerInfo {

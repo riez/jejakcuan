@@ -2,10 +2,12 @@
   import { page } from '$app/stores';
   import { onMount, onDestroy } from 'svelte';
   import { TabGroup, Tab, ProgressRadial } from '@skeletonlabs/skeleton';
-  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData, type Job, type StockSourceType } from '$lib/api';
-  import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
+  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData, type Job, type StockSourceType, type FullAnalysisResponse } from '$lib/api';
+  import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown, StockAnalysis } from '$lib/components';
+  import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion, InstitutionalFlowAnalysis, AccumulatorInfo } from '$lib/components/StockAnalysis.types';
 
   let symbol = $derived($page.params.symbol ?? '');
+  let initialTab = $derived($page.url.searchParams.get('tab'));
   let stock = $state<Stock | null>(null);
   let score = $state<StockScore | null>(null);
   let prices = $state<StockPrice[]>([]);
@@ -15,6 +17,15 @@
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
   let tabSet = $state(0);
+  let language = $state<'en' | 'id'>('id');
+  
+  // Analysis data
+  let brokerSummary = $state<BrokerSummary | null>(null);
+  let technical = $state<TechnicalAnalysis | null>(null);
+  let valuation = $state<ValuationEstimate | null>(null);
+  let conclusion = $state<OverallConclusion | null>(null);
+  let analysisLoading = $state(false);
+  let analysisError = $state<string | null>(null);
 
   type SourceKey = 'price' | 'broker' | 'fundamental';
 
@@ -60,6 +71,14 @@
       inWatchlist = watchlistData.some((w) => w.symbol === symbol);
       fundamentals = fundamentalData;
       freshness = freshnessData;
+      
+      // Handle initial tab from URL query param
+      if (initialTab === 'analysis') {
+        tabSet = 2;
+        loadAnalysis();
+      } else if (initialTab === 'fundamental') {
+        tabSet = 1;
+      }
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -70,6 +89,141 @@
   onDestroy(() => {
     Object.values(jobPollingIntervals).forEach(interval => clearInterval(interval));
   });
+
+  function convertBrokerSummary(data: FullAnalysisResponse['broker_summary']): BrokerSummary | null {
+    if (!data || (data.big_buyers.length === 0 && data.big_sellers.length === 0)) return null;
+    
+    let institutionalAnalysis: InstitutionalFlowAnalysis | null = null;
+    if ((data as any).institutional_analysis) {
+      const ia = (data as any).institutional_analysis;
+      institutionalAnalysis = {
+        accumulationScore: ia.accumulation_score,
+        isAccumulating: ia.is_accumulating,
+        coordinatedBuying: ia.coordinated_buying,
+        daysAccumulated: ia.days_accumulated,
+        net5Day: ia.net_5_day,
+        net20Day: ia.net_20_day,
+        institutionalNet5Day: ia.institutional_net_5_day,
+        institutionalNet20Day: ia.institutional_net_20_day,
+        foreignNet5Day: ia.foreign_net_5_day,
+        foreignNet20Day: ia.foreign_net_20_day,
+        topAccumulators: (ia.top_accumulators || []).map((acc: any): AccumulatorInfo => ({
+          brokerCode: acc.broker_code,
+          brokerName: acc.broker_name,
+          category: acc.category,
+          netValue: acc.net_value,
+          netVolume: acc.net_volume,
+          isForeign: acc.is_foreign,
+        })),
+        signalStrength: ia.signal_strength as InstitutionalFlowAnalysis['signalStrength'],
+        signalDescription: ia.signal_description,
+      };
+    }
+    
+    return {
+      bigBuyers: data.big_buyers.map(b => ({
+        code: b.code,
+        name: b.name,
+        category: b.category,
+        avgPrice: b.avg_price,
+        buyVolume: b.buy_volume,
+        sellVolume: b.sell_volume,
+        netVolume: b.net_volume,
+        buyValue: b.buy_value,
+        sellValue: b.sell_value,
+        netValue: b.net_value,
+      })),
+      bigSellers: data.big_sellers.map(b => ({
+        code: b.code,
+        name: b.name,
+        category: b.category,
+        avgPrice: b.avg_price,
+        buyVolume: b.buy_volume,
+        sellVolume: b.sell_volume,
+        netVolume: b.net_volume,
+        buyValue: b.buy_value,
+        sellValue: b.sell_value,
+        netValue: b.net_value,
+      })),
+      netStatus: data.net_status as 'accumulation' | 'distribution' | 'balanced',
+      priceRange: { low: data.price_range.low, high: data.price_range.high },
+      foreignNet: data.foreign_net,
+      domesticNet: data.domestic_net,
+      institutionalAnalysis,
+    };
+  }
+
+  function convertTechnical(data: FullAnalysisResponse['technical']): TechnicalAnalysis | null {
+    if (!data) return null;
+    return {
+      lastPrice: data.last_price,
+      rsi: data.rsi,
+      rsiSignal: data.rsi_signal as 'oversold' | 'neutral' | 'overbought',
+      macd: data.macd,
+      macdSignal: data.macd_signal.includes('bullish') ? 'positive' : 'negative',
+      ichimoku: {
+        position: data.ichimoku.position as 'above' | 'in' | 'below',
+        cloudRange: { low: data.ichimoku.cloud_range.low, high: data.ichimoku.cloud_range.high }
+      },
+      support: data.support,
+      resistance: data.resistance,
+      summary: data.summary
+    };
+  }
+
+  function convertValuation(data: FullAnalysisResponse['valuation']): ValuationEstimate | null {
+    if (!data) return null;
+    return {
+      perValue: data.per_value,
+      forwardEps: data.forward_eps,
+      pbvValue: data.pbv_value,
+      bookValue: data.book_value,
+      evEbitdaValue: data.ev_ebitda_value,
+      fairPriceRange: { low: data.fair_price_range.low, high: data.fair_price_range.high },
+      bullCase: { low: data.bull_case.low, high: data.bull_case.high }
+    };
+  }
+
+  function convertConclusion(data: FullAnalysisResponse['conclusion']): OverallConclusion | null {
+    if (!data) return null;
+    return {
+      strengths: data.strengths,
+      weaknesses: data.weaknesses,
+      strategy: {
+        traders: data.strategy.traders,
+        investors: data.strategy.investors,
+        valueInvestors: data.strategy.value_investors
+      }
+    };
+  }
+
+  async function loadAnalysis() {
+    if (!symbol || analysisLoading) return;
+    
+    analysisLoading = true;
+    analysisError = null;
+    
+    try {
+      const analysis = await api.getFullAnalysis(symbol);
+      
+      if (!analysis) {
+        analysisError = language === 'id'
+          ? 'Data analisis tidak tersedia untuk saham ini.'
+          : 'Analysis data is not available for this stock.';
+        return;
+      }
+
+      brokerSummary = convertBrokerSummary(analysis.broker_summary);
+      technical = convertTechnical(analysis.technical);
+      valuation = convertValuation(analysis.valuation);
+      conclusion = convertConclusion(analysis.conclusion);
+    } catch (e) {
+      console.error(`Failed to load analysis for ${symbol}:`, e);
+      analysisError = (e as Error).message;
+    } finally {
+      analysisLoading = false;
+    }
+  }
 
   const STALE_DAYS = 7;
 
@@ -534,10 +688,30 @@
       <ProgressRadial stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
     </div>
   {:else if stock}
-    <TabGroup>
-      <Tab bind:group={tabSet} name="technical" value={0}>Technical</Tab>
-      <Tab bind:group={tabSet} name="fundamental" value={1}>Fundamental</Tab>
-    </TabGroup>
+    <div class="flex items-center justify-between flex-wrap gap-4 mb-4">
+      <TabGroup>
+        <Tab bind:group={tabSet} name="technical" value={0}>Technical</Tab>
+        <Tab bind:group={tabSet} name="fundamental" value={1}>Fundamental</Tab>
+        <Tab bind:group={tabSet} name="analysis" value={2} onclick={loadAnalysis}>Analysis</Tab>
+      </TabGroup>
+      
+      {#if tabSet === 2}
+        <div class="flex items-center gap-2">
+          <button 
+            onclick={() => language = 'id'}
+            class="btn btn-sm {language === 'id' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
+          >
+            ID
+          </button>
+          <button 
+            onclick={() => language = 'en'}
+            class="btn btn-sm {language === 'en' ? 'variant-filled-primary' : 'variant-ghost-surface'}"
+          >
+            EN
+          </button>
+        </div>
+      {/if}
+    </div>
 
     {#if tabSet === 0}
       <div class="card p-4">
@@ -652,7 +826,7 @@
           <p class="text-slate-500 dark:text-slate-400 text-center p-4">No price history available</p>
         {/if}
       </div>
-    {:else}
+    {:else if tabSet === 1}
       <div class="space-y-6">
         <div class="card p-4">
           <h3 class="h3 mb-4">Valuation Metrics</h3>
@@ -703,6 +877,57 @@
             </div>
           </dl>
         </div>
+      </div>
+    {:else if tabSet === 2}
+      <!-- Analysis Tab -->
+      <div class="space-y-6">
+        {#if analysisLoading}
+          <div class="card p-8 text-center">
+            <ProgressRadial width="w-10" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" class="mx-auto" />
+            <p class="text-slate-500 dark:text-slate-400 mt-4">
+              {language === 'id' ? 'Memuat data analisis...' : 'Loading analysis data...'}
+            </p>
+          </div>
+        {:else}
+          {#if analysisError}
+            <div class="card variant-soft-error p-4">
+              <p class="text-rose-700 dark:text-rose-300">
+                <strong>{language === 'id' ? 'Gagal memuat analisis:' : 'Failed to load analysis:'}</strong>
+                {analysisError}
+              </p>
+              <button
+                onclick={loadAnalysis}
+                class="btn btn-sm variant-ghost-primary mt-2"
+              >
+                {language === 'id' ? 'Coba Lagi' : 'Try Again'}
+              </button>
+            </div>
+          {/if}
+          
+          {#if !brokerSummary && !technical && !valuation && !conclusion && !analysisError && !analysisLoading}
+            <div class="card p-8 text-center">
+              <p class="text-slate-500 dark:text-slate-400 mb-4">
+                {language === 'id' ? 'Klik untuk memuat analisis detail.' : 'Click to load detailed analysis.'}
+              </p>
+              <button
+                onclick={loadAnalysis}
+                class="btn variant-filled-primary"
+              >
+                {language === 'id' ? 'Muat Analisis' : 'Load Analysis'}
+              </button>
+            </div>
+          {:else}
+            <StockAnalysis 
+              {symbol}
+              {brokerSummary}
+              {technical}
+              {valuation}
+              {conclusion}
+              {freshness}
+              {language}
+            />
+          {/if}
+        {/if}
       </div>
     {/if}
   {/if}

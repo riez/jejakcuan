@@ -55,6 +55,35 @@ pub struct BrokerSummaryResponse {
     pub price_range: PriceRange,
     pub foreign_net: f64,
     pub domestic_net: f64,
+    // Institutional flow analysis (big player movements)
+    pub institutional_analysis: Option<InstitutionalFlowAnalysis>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct InstitutionalFlowAnalysis {
+    pub accumulation_score: f64,                // 0-100 score
+    pub is_accumulating: bool,                  // Strong accumulation signal
+    pub coordinated_buying: bool,               // Multiple institutional buyers acting together
+    pub days_accumulated: i32,                  // Consecutive days of net buying
+    pub net_5_day: f64,                         // 5-day rolling net flow
+    pub net_20_day: f64,                        // 20-day rolling net flow
+    pub institutional_net_5_day: f64,           // 5-day institutional net
+    pub institutional_net_20_day: f64,          // 20-day institutional net
+    pub foreign_net_5_day: f64,                 // 5-day foreign net
+    pub foreign_net_20_day: f64,                // 20-day foreign net
+    pub top_accumulators: Vec<AccumulatorInfo>, // Top institutional accumulators
+    pub signal_strength: String,
+    pub signal_description: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccumulatorInfo {
+    pub broker_code: String,
+    pub broker_name: Option<String>,
+    pub category: String,
+    pub net_value: f64,
+    pub net_volume: i64,
+    pub is_foreign: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,10 +191,14 @@ async fn get_full_analysis(
         })?;
 
     // Get technical analysis
-    let technical = get_technical_analysis(&state, &upper_symbol, days).await.ok();
+    let technical = get_technical_analysis(&state, &upper_symbol, days)
+        .await
+        .ok();
 
     // Get broker flow
-    let broker_summary = get_broker_flow_internal(&state, &upper_symbol, 5).await.ok();
+    let broker_summary = get_broker_flow_internal(&state, &upper_symbol, 5)
+        .await
+        .ok();
 
     // Generate valuation and conclusion based on technical data
     let (valuation, conclusion) = if let Some(ref tech) = technical {
@@ -205,7 +238,9 @@ async fn get_technicals(
             )
         })?;
 
-    get_technical_analysis(&state, &upper_symbol, days).await.map(Json)
+    get_technical_analysis(&state, &upper_symbol, days)
+        .await
+        .map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -233,7 +268,9 @@ async fn get_broker_flow(
             )
         })?;
 
-    get_broker_flow_internal(&state, &upper_symbol, days).await.map(Json)
+    get_broker_flow_internal(&state, &upper_symbol, days)
+        .await
+        .map(Json)
 }
 
 // ============== Internal Functions ==============
@@ -269,10 +306,7 @@ async fn get_technical_analysis(
             format!("RSI calculation error: {}", e),
         )
     })?;
-    let rsi = rsi_values
-        .last()
-        .copied()
-        .unwrap_or(dec!(50));
+    let rsi = rsi_values.last().copied().unwrap_or(dec!(50));
     let rsi_f64 = rsi.to_f64().unwrap_or(50.0);
     let rsi_sig = rsi_signal(rsi).to_string();
 
@@ -283,8 +317,16 @@ async fn get_technical_analysis(
             format!("MACD calculation error: {}", e),
         )
     })?;
-    let macd_value = macd_result.macd_line.last().copied().unwrap_or(Decimal::ZERO);
-    let macd_hist = macd_result.histogram.last().copied().unwrap_or(Decimal::ZERO);
+    let macd_value = macd_result
+        .macd_line
+        .last()
+        .copied()
+        .unwrap_or(Decimal::ZERO);
+    let macd_hist = macd_result
+        .histogram
+        .last()
+        .copied()
+        .unwrap_or(Decimal::ZERO);
     let macd_sig = macd_signal(&macd_result).to_string();
 
     // Calculate Bollinger Bands
@@ -312,9 +354,27 @@ async fn get_technical_analysis(
         macd_signal: macd_sig,
         macd_histogram: macd_hist.to_f64().unwrap_or(0.0),
         bollinger: BollingerResponse {
-            upper: bollinger.upper.last().copied().unwrap_or(Decimal::ZERO).to_f64().unwrap_or(0.0),
-            middle: bollinger.middle.last().copied().unwrap_or(Decimal::ZERO).to_f64().unwrap_or(0.0),
-            lower: bollinger.lower.last().copied().unwrap_or(Decimal::ZERO).to_f64().unwrap_or(0.0),
+            upper: bollinger
+                .upper
+                .last()
+                .copied()
+                .unwrap_or(Decimal::ZERO)
+                .to_f64()
+                .unwrap_or(0.0),
+            middle: bollinger
+                .middle
+                .last()
+                .copied()
+                .unwrap_or(Decimal::ZERO)
+                .to_f64()
+                .unwrap_or(0.0),
+            lower: bollinger
+                .lower
+                .last()
+                .copied()
+                .unwrap_or(Decimal::ZERO)
+                .to_f64()
+                .unwrap_or(0.0),
         },
         ichimoku,
         support,
@@ -330,14 +390,24 @@ async fn get_broker_flow_internal(
 ) -> Result<BrokerSummaryResponse, (axum::http::StatusCode, String)> {
     let from = Utc::now() - Duration::days(days as i64);
     let to = Utc::now();
+    let from_20 = Utc::now() - Duration::days(20);
 
-    let aggregates = repositories::broker_summary::get_broker_flow_aggregates(&state.db, symbol, from, to)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let aggregates =
+        repositories::broker_summary::get_broker_flow_aggregates(&state.db, symbol, from, to)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let price_range = repositories::broker_summary::get_price_range(&state.db, symbol, from, to)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let daily_summaries =
+        repositories::broker_summary::get_daily_broker_summaries(&state.db, symbol, from_20, to)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let institutional_analysis =
+        calculate_institutional_flow_analysis(&aggregates, &daily_summaries);
 
     let mut foreign_net = 0.0;
     let mut domestic_net = 0.0;
@@ -441,18 +511,212 @@ async fn get_broker_flow_internal(
         },
         foreign_net,
         domestic_net,
+        institutional_analysis,
     })
 }
 
-fn calculate_support_resistance(
-    prices: &[jejakcuan_db::StockPriceRow],
-) -> (Vec<f64>, Vec<f64>) {
+fn calculate_institutional_flow_analysis(
+    aggregates: &[repositories::broker_summary::BrokerFlowAggregateRow],
+    daily_summaries: &[repositories::broker_summary::DailyBrokerSummaryRow],
+) -> Option<InstitutionalFlowAnalysis> {
+    if daily_summaries.is_empty() {
+        return None;
+    }
+
+    use std::collections::{HashMap, HashSet};
+
+    let mut by_date: HashMap<
+        chrono::NaiveDate,
+        Vec<&repositories::broker_summary::DailyBrokerSummaryRow>,
+    > = HashMap::new();
+    for summary in daily_summaries {
+        by_date
+            .entry(summary.time.date_naive())
+            .or_default()
+            .push(summary);
+    }
+
+    let mut dates: Vec<_> = by_date.keys().cloned().collect();
+    dates.sort();
+
+    if dates.is_empty() {
+        return None;
+    }
+
+    let calculate_window = |window_size: usize| -> (f64, f64, f64, i32, bool) {
+        let window_dates: Vec<_> = dates.iter().rev().take(window_size).cloned().collect();
+        let mut net_value = 0.0f64;
+        let mut institutional_net = 0.0f64;
+        let mut foreign_net = 0.0f64;
+        let mut days_positive = 0i32;
+        let mut institutional_buyers: HashMap<String, i32> = HashMap::new();
+
+        for date in &window_dates {
+            if let Some(day_summaries) = by_date.get(date) {
+                let mut day_net = 0.0f64;
+                let mut day_inst_net = 0.0f64;
+                let mut day_foreign_net = 0.0f64;
+
+                for summary in day_summaries {
+                    let net = summary.net_value.to_f64().unwrap_or(0.0);
+                    day_net += net;
+
+                    let is_institutional = summary.category == "foreign_institutional"
+                        || summary.category == "local_institutional";
+                    let is_foreign = summary.category == "foreign_institutional";
+
+                    if is_institutional {
+                        let weight = if is_foreign { 1.0 } else { 0.8 };
+                        day_inst_net += net * weight;
+
+                        if net > 0.0 {
+                            *institutional_buyers
+                                .entry(summary.broker_code.clone())
+                                .or_default() += 1;
+                        }
+                    }
+
+                    if is_foreign {
+                        day_foreign_net += net;
+                    }
+                }
+
+                net_value += day_net;
+                institutional_net += day_inst_net;
+                foreign_net += day_foreign_net;
+
+                if day_inst_net > 0.0 {
+                    days_positive += 1;
+                }
+            }
+        }
+
+        let min_days = window_dates.len() / 2;
+        let consistent_buyers: usize = institutional_buyers
+            .values()
+            .filter(|&&days| days as usize >= min_days.max(1))
+            .count();
+        let coordinated = consistent_buyers >= 3;
+
+        (
+            net_value,
+            institutional_net,
+            foreign_net,
+            days_positive,
+            coordinated,
+        )
+    };
+
+    let (net_5, inst_5, foreign_5, days_5, coord_5) = calculate_window(5);
+    let (net_20, inst_20, foreign_20, days_20, coord_20) = calculate_window(20);
+
+    let mut score = 50.0f64;
+
+    if inst_5 > 0.0 {
+        score += 25.0;
+    } else if inst_5 < 0.0 {
+        score -= 15.0;
+    }
+    if foreign_5 > 0.0 {
+        score += 15.0;
+    } else if foreign_5 < 0.0 {
+        score -= 10.0;
+    }
+    if days_5 > 0 {
+        score += (days_5 as f64 / 5.0) * 15.0;
+    }
+    if coord_5 {
+        score += 10.0;
+    }
+
+    score = score.max(0.0).min(100.0);
+
+    let is_accumulating = score > 60.0 && days_5 >= 3;
+    let is_distributing = score < 40.0 && days_5 <= 1;
+
+    let signal_strength = if score >= 75.0 {
+        "strong"
+    } else if score >= 60.0 {
+        "moderate"
+    } else if score <= 25.0 {
+        "distribution"
+    } else if score <= 40.0 {
+        "weak"
+    } else {
+        "neutral"
+    };
+
+    let signal_description = if is_accumulating && coord_5 {
+        format!(
+            "Strong accumulation: {} institutional buyers coordinating over {} days",
+            aggregates
+                .iter()
+                .filter(|a| a.net_value > Decimal::ZERO
+                    && (a.category == "foreign_institutional"
+                        || a.category == "local_institutional"))
+                .count(),
+            days_5
+        )
+    } else if is_accumulating {
+        format!(
+            "Accumulation detected: institutional net buying for {} days",
+            days_5
+        )
+    } else if is_distributing {
+        "Distribution: institutional net selling detected".to_string()
+    } else if coord_5 {
+        "Coordinated activity: multiple institutional brokers acting together".to_string()
+    } else {
+        "Mixed signals: no clear accumulation/distribution pattern".to_string()
+    };
+
+    let top_accumulators: Vec<AccumulatorInfo> = aggregates
+        .iter()
+        .filter(|a| {
+            a.net_value > Decimal::ZERO
+                && (a.category == "foreign_institutional" || a.category == "local_institutional")
+        })
+        .take(5)
+        .map(|a| AccumulatorInfo {
+            broker_code: a.broker_code.clone(),
+            broker_name: a.broker_name.clone(),
+            category: a.category.clone(),
+            net_value: a.net_value.to_f64().unwrap_or(0.0),
+            net_volume: a.net_volume,
+            is_foreign: a.category == "foreign_institutional",
+        })
+        .collect();
+
+    Some(InstitutionalFlowAnalysis {
+        accumulation_score: score,
+        is_accumulating,
+        coordinated_buying: coord_5 || coord_20,
+        days_accumulated: days_5,
+        net_5_day: net_5,
+        net_20_day: net_20,
+        institutional_net_5_day: inst_5,
+        institutional_net_20_day: inst_20,
+        foreign_net_5_day: foreign_5,
+        foreign_net_20_day: foreign_20,
+        top_accumulators,
+        signal_strength: signal_strength.to_string(),
+        signal_description,
+    })
+}
+
+fn calculate_support_resistance(prices: &[jejakcuan_db::StockPriceRow]) -> (Vec<f64>, Vec<f64>) {
     if prices.is_empty() {
         return (vec![], vec![]);
     }
 
-    let lows: Vec<f64> = prices.iter().map(|p| p.low.to_f64().unwrap_or(0.0)).collect();
-    let highs: Vec<f64> = prices.iter().map(|p| p.high.to_f64().unwrap_or(0.0)).collect();
+    let lows: Vec<f64> = prices
+        .iter()
+        .map(|p| p.low.to_f64().unwrap_or(0.0))
+        .collect();
+    let highs: Vec<f64> = prices
+        .iter()
+        .map(|p| p.high.to_f64().unwrap_or(0.0))
+        .collect();
 
     // Find local minima for support
     let mut support_levels: Vec<f64> = Vec::new();
@@ -490,9 +754,9 @@ fn calculate_support_resistance(
 fn deduplicate_levels(levels: &[f64], tolerance: f64) -> Vec<f64> {
     let mut result: Vec<f64> = Vec::new();
     for &level in levels {
-        let is_duplicate = result.iter().any(|&existing| {
-            (level - existing).abs() / existing.max(1.0) < tolerance
-        });
+        let is_duplicate = result
+            .iter()
+            .any(|&existing| (level - existing).abs() / existing.max(1.0) < tolerance);
         if !is_duplicate {
             result.push(level);
         }
@@ -506,7 +770,10 @@ fn calculate_ichimoku(prices: &[Decimal], current_price: Decimal) -> IchimokuInf
     if period < 9 {
         return IchimokuInfo {
             position: "neutral".to_string(),
-            cloud_range: PriceRange { low: 0.0, high: 0.0 },
+            cloud_range: PriceRange {
+                low: 0.0,
+                high: 0.0,
+            },
         };
     }
 
@@ -647,11 +914,15 @@ fn generate_valuation_conclusion(
 
     // TA Summary analysis
     if technical.summary.buy > technical.summary.sell {
-        strengths.push(format!("Technical indicators favor buying ({} buy vs {} sell)", 
-            technical.summary.buy, technical.summary.sell));
+        strengths.push(format!(
+            "Technical indicators favor buying ({} buy vs {} sell)",
+            technical.summary.buy, technical.summary.sell
+        ));
     } else if technical.summary.sell > technical.summary.buy {
-        weaknesses.push(format!("Technical indicators favor selling ({} sell vs {} buy)",
-            technical.summary.sell, technical.summary.buy));
+        weaknesses.push(format!(
+            "Technical indicators favor selling ({} sell vs {} buy)",
+            technical.summary.sell, technical.summary.buy
+        ));
     }
 
     // Support/Resistance analysis
@@ -667,7 +938,10 @@ fn generate_valuation_conclusion(
         let nearest_resistance = technical.resistance.first().unwrap();
         let upside = (nearest_resistance - last_price) / last_price * 100.0;
         if upside > 10.0 {
-            strengths.push(format!("Potential {:.1}% upside to resistance at {:.0}", upside, nearest_resistance));
+            strengths.push(format!(
+                "Potential {:.1}% upside to resistance at {:.0}",
+                upside, nearest_resistance
+            ));
         } else if upside < 3.0 {
             weaknesses.push(format!("Near resistance at {:.0}", nearest_resistance));
         }
@@ -683,9 +957,19 @@ fn generate_valuation_conclusion(
 
     // Generate strategy recommendations
     let traders_strategy = if technical.rsi <= 40.0 {
-        format!("Consider entry near support {:.0}, target resistance {:.0}", 
-            technical.support.first().copied().unwrap_or(last_price * 0.95),
-            technical.resistance.first().copied().unwrap_or(last_price * 1.1))
+        format!(
+            "Consider entry near support {:.0}, target resistance {:.0}",
+            technical
+                .support
+                .first()
+                .copied()
+                .unwrap_or(last_price * 0.95),
+            technical
+                .resistance
+                .first()
+                .copied()
+                .unwrap_or(last_price * 1.1)
+        )
     } else if technical.rsi >= 60.0 {
         "Consider profit-taking at resistance levels".to_string()
     } else {

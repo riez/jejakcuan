@@ -66,6 +66,7 @@ fn is_excluded_non_syariah_bank(stock: &StockRow) -> bool {
 pub struct ListStocksQuery {
     sector: Option<String>,
     limit: Option<i32>,
+    sharia: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,8 +84,7 @@ async fn list_stocks(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // Filter by sector if provided
-    let filtered: Vec<StockRow> = if let Some(sector) = query.sector {
+    let mut filtered: Vec<StockRow> = if let Some(sector) = query.sector {
         stocks
             .into_iter()
             .filter(|s| {
@@ -98,11 +98,9 @@ async fn list_stocks(
         stocks
     };
 
-    // Exclude non-Syariah bank stocks from the default universe
-    let filtered: Vec<StockRow> = filtered
-        .into_iter()
-        .filter(|s| !is_excluded_non_syariah_bank(s))
-        .collect();
+    if query.sharia.unwrap_or(true) {
+        filtered.retain(|s| !is_excluded_non_syariah_bank(s));
+    }
 
     // Apply limit
     let limited: Vec<StockRow> = if let Some(limit) = query.limit {
@@ -210,6 +208,7 @@ async fn get_stock_score(
 #[derive(Debug, Deserialize)]
 pub struct TopScoresQuery {
     limit: Option<i32>,
+    sharia: Option<bool>,
 }
 
 async fn get_top_scores(
@@ -218,15 +217,19 @@ async fn get_top_scores(
     Query(query): Query<TopScoresQuery>,
 ) -> Result<Json<Vec<StockScoreRow>>, (axum::http::StatusCode, String)> {
     let limit = query.limit.unwrap_or(50);
+    let sharia_filter = query.sharia.unwrap_or(true);
 
-    // Exclude non-Syariah bank stocks from signal/screener rankings.
-    let excluded: HashSet<String> = repositories::stocks::get_all_stocks(&state.db)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .into_iter()
-        .filter(|s| is_excluded_non_syariah_bank(s))
-        .map(|s| s.symbol)
-        .collect();
+    let excluded: HashSet<String> = if sharia_filter {
+        repositories::stocks::get_all_stocks(&state.db)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .into_iter()
+            .filter(|s| is_excluded_non_syariah_bank(s))
+            .map(|s| s.symbol)
+            .collect()
+    } else {
+        HashSet::new()
+    };
 
     let fetch_limit = limit + excluded.len() as i32;
     let scores = repositories::scores::get_latest_scores(&state.db, fetch_limit)

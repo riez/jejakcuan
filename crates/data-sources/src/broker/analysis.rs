@@ -1,4 +1,4 @@
-//! Broker flow analysis for bandarmology
+//! Broker flow analysis for institutional tracking
 //!
 //! Implements rolling accumulation detection and institutional flow analysis:
 //! - Rolling 5-day and 20-day net position calculation
@@ -124,12 +124,36 @@ pub fn calculate_rolling_accumulation(
     Some(RollingAccumulation {
         symbol,
         date: latest_date,
-        net_5_day: if window_size == 5 { net_value } else { Decimal::ZERO },
-        net_20_day: if window_size == 20 { net_value } else { Decimal::ZERO },
-        institutional_net_5_day: if window_size == 5 { institutional_net } else { Decimal::ZERO },
-        institutional_net_20_day: if window_size == 20 { institutional_net } else { Decimal::ZERO },
-        foreign_net_5_day: if window_size == 5 { foreign_net } else { Decimal::ZERO },
-        foreign_net_20_day: if window_size == 20 { foreign_net } else { Decimal::ZERO },
+        net_5_day: if window_size == 5 {
+            net_value
+        } else {
+            Decimal::ZERO
+        },
+        net_20_day: if window_size == 20 {
+            net_value
+        } else {
+            Decimal::ZERO
+        },
+        institutional_net_5_day: if window_size == 5 {
+            institutional_net
+        } else {
+            Decimal::ZERO
+        },
+        institutional_net_20_day: if window_size == 20 {
+            institutional_net
+        } else {
+            Decimal::ZERO
+        },
+        foreign_net_5_day: if window_size == 5 {
+            foreign_net
+        } else {
+            Decimal::ZERO
+        },
+        foreign_net_20_day: if window_size == 20 {
+            foreign_net
+        } else {
+            Decimal::ZERO
+        },
         accumulation_score: score,
         days_accumulated: days_positive,
         is_accumulating: score > dec!(60) && days_positive >= (window_size as i32 / 2),
@@ -157,8 +181,12 @@ fn detect_coordinated_buying(
     for date in dates {
         if let Some(day_summaries) = by_date.get(date) {
             for summary in day_summaries {
-                if is_institutional_broker(&summary.broker_code) && summary.net_value > Decimal::ZERO {
-                    *institutional_buyers.entry(summary.broker_code.clone()).or_default() += 1;
+                if is_institutional_broker(&summary.broker_code)
+                    && summary.net_value > Decimal::ZERO
+                {
+                    *institutional_buyers
+                        .entry(summary.broker_code.clone())
+                        .or_default() += 1;
                 }
             }
         }
@@ -218,9 +246,11 @@ pub fn aggregate_broker_positions(summaries: &[BrokerSummary]) -> Vec<BrokerPosi
     let mut positions: HashMap<String, (Decimal, i64, BrokerCategory)> = HashMap::new();
 
     for summary in summaries {
-        let entry = positions
-            .entry(summary.broker_code.clone())
-            .or_insert((Decimal::ZERO, 0, get_broker_category(&summary.broker_code)));
+        let entry = positions.entry(summary.broker_code.clone()).or_insert((
+            Decimal::ZERO,
+            0,
+            get_broker_category(&summary.broker_code),
+        ));
 
         entry.0 += summary.net_value;
         entry.1 += summary.net_volume;
@@ -281,10 +311,7 @@ pub fn calculate_persistence_score(
     }
 
     // Average score over period
-    let avg_score: Decimal = historical_scores
-        .iter()
-        .map(|s| s.score)
-        .sum::<Decimal>()
+    let avg_score: Decimal = historical_scores.iter().map(|s| s.score).sum::<Decimal>()
         / Decimal::from(historical_scores.len() as i32);
 
     (avg_score, consecutive_days)

@@ -5,8 +5,9 @@
    * Supports both Indonesian (id) and English (en) languages
    */
 
-  import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion } from './StockAnalysis.types';
+  import type { BrokerSummary, TechnicalAnalysis, ValuationEstimate, OverallConclusion, InstitutionalFlowAnalysis } from './StockAnalysis.types';
   import type { StockFreshness } from '$lib/api';
+  import InstitutionalFlowAnalysisComponent from './InstitutionalFlowAnalysis.svelte';
 
   let { 
     symbol = '',
@@ -300,6 +301,10 @@
         </div>
       </div>
     </div>
+  {/if}
+
+  {#if brokerSummary?.institutionalAnalysis}
+    <InstitutionalFlowAnalysisComponent analysis={brokerSummary.institutionalAnalysis} {language} />
   {/if}
 
   <!-- Technical Analysis -->
