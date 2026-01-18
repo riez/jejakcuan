@@ -21,8 +21,22 @@
   let chartContainer: HTMLDivElement;
   let chart: IChartApi | null = null;
 
+  function deduplicateAndSort(data: PriceData[]): PriceData[] {
+    const byDate = new Map<string, PriceData>();
+    for (const p of data) {
+      const dateKey = p.time.split('T')[0];
+      byDate.set(dateKey, p);
+    }
+    return Array.from(byDate.values()).sort((a, b) => 
+      a.time.split('T')[0].localeCompare(b.time.split('T')[0])
+    );
+  }
+
   onMount(() => {
     if (!chartContainer || prices.length === 0) return;
+
+    const cleanPrices = deduplicateAndSort(prices);
+    if (cleanPrices.length === 0) return;
 
     chart = createChart(chartContainer, {
       layout: {
@@ -57,8 +71,7 @@
       wickUpColor: '#22c55e'
     });
 
-    // Format and set candle data
-    const candleData = prices.map((p) => ({
+    const candleData = cleanPrices.map((p) => ({
       time: p.time.split('T')[0],
       open: p.open,
       high: p.high,
@@ -67,10 +80,9 @@
     }));
     candleSeries.setData(candleData as Parameters<typeof candleSeries.setData>[0]);
 
-    // Add EMA20 if enabled
-    if (showEma && prices.length >= 20) {
+    if (showEma && cleanPrices.length >= 20) {
       const emaValues = calculateEMA(
-        prices.map((p) => p.close),
+        cleanPrices.map((p) => p.close),
         20
       );
       const emaSeries = chart.addLineSeries({
@@ -81,7 +93,7 @@
 
       const emaData = emaValues
         .map((value, i) => ({
-          time: prices[i].time.split('T')[0],
+          time: cleanPrices[i].time.split('T')[0],
           value: value
         }))
         .filter((d) => d.value > 0);
@@ -89,7 +101,6 @@
       emaSeries.setData(emaData as Parameters<typeof emaSeries.setData>[0]);
     }
 
-    // Add volume histogram if enabled
     if (showVolume) {
       const volumeSeries = chart.addHistogramSeries({
         color: '#6366f1',
@@ -101,7 +112,7 @@
         scaleMargins: { top: 0.8, bottom: 0 }
       });
 
-      const volumeData = prices.map((p) => ({
+      const volumeData = cleanPrices.map((p) => ({
         time: p.time.split('T')[0],
         value: p.volume,
         color: p.close >= p.open ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
