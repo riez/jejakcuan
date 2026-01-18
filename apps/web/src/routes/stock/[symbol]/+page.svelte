@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
   import { TabGroup, Tab, ProgressRadial } from '@skeletonlabs/skeleton';
-  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData } from '$lib/api';
+  import { api, type Stock, type StockFreshness, type StockScore, type StockPrice, type FundamentalData, type Job } from '$lib/api';
   import { PriceChart, ScoreGauge, FundamentalMetrics, ScoreBreakdown } from '$lib/components';
 
   let symbol = $derived($page.params.symbol ?? '');
@@ -14,7 +14,11 @@
   let isLoading = $state(true);
   let error = $state<string | null>(null);
   let inWatchlist = $state(false);
-  let tabSet = $state(0); // 0 = technical, 1 = fundamental
+  let tabSet = $state(0);
+  let isRefreshing = $state(false);
+  let refreshJobs = $state<Job[]>([]);
+  let refreshError = $state<string | null>(null);
+  let refreshSuccess = $state(false);
 
   onMount(async () => {
     if (!symbol) {
@@ -72,6 +76,69 @@
       }
     } catch (e) {
       error = (e as Error).message;
+    }
+  }
+
+  async function refreshData() {
+    if (!symbol || isRefreshing) return;
+
+    isRefreshing = true;
+    refreshError = null;
+    refreshSuccess = false;
+
+    try {
+      const response = await api.refreshStockData(symbol);
+      refreshJobs = response.jobs;
+
+      const pollInterval = setInterval(async () => {
+        const updatedJobs = await Promise.all(
+          refreshJobs.map(async (job) => {
+            try {
+              return await api.getJob(job.id);
+            } catch {
+              return job;
+            }
+          })
+        );
+        refreshJobs = updatedJobs;
+
+        const allDone = updatedJobs.every(
+          (j) => j.status === 'completed' || j.status === 'failed'
+        );
+
+        if (allDone) {
+          clearInterval(pollInterval);
+          isRefreshing = false;
+
+          const failed = updatedJobs.filter((j) => j.status === 'failed');
+          if (failed.length > 0) {
+            refreshError = `${failed.length} job(s) failed`;
+          } else {
+            refreshSuccess = true;
+            const freshnessData = await api.getStockFreshness(symbol);
+            freshness = freshnessData;
+            setTimeout(() => {
+              refreshSuccess = false;
+            }, 5000);
+          }
+        }
+      }, 2000);
+    } catch (e) {
+      refreshError = (e as Error).message;
+      isRefreshing = false;
+    }
+  }
+
+  function getJobStatusColor(status: string): string {
+    switch (status) {
+      case 'completed':
+        return 'variant-soft-success';
+      case 'failed':
+        return 'variant-soft-error';
+      case 'running':
+        return 'variant-soft-warning';
+      default:
+        return 'variant-soft-surface';
     }
   }
 
@@ -140,46 +207,143 @@
     {@const staleBroker = isStale(freshness.broker_flow_as_of)}
     {@const staleFinancials = isStale(freshness.financials_as_of)}
     {@const staleScores = isStale(freshness.scores_as_of)}
+    {@const hasPrices = !!freshness.prices_as_of}
+    {@const hasBroker = !!freshness.broker_flow_as_of}
+    {@const hasFinancials = !!freshness.financials_as_of}
+    {@const hasScores = !!freshness.scores_as_of}
+    
     <div class="card p-4">
-      <div class="flex items-center justify-between gap-2 flex-wrap">
-        <h3 class="h3">Data Freshness</h3>
-        <span class="badge {stalePrices || staleBroker || staleFinancials || staleScores ? 'variant-soft-warning' : 'variant-soft-success'}">
-          {stalePrices || staleBroker || staleFinancials || staleScores ? `Stale (>${STALE_DAYS}d)` : 'Fresh'}
-        </span>
+      <div class="flex items-center justify-between gap-2 flex-wrap mb-4">
+        <div>
+          <h3 class="h3">Data Sources & Attribution</h3>
+          <p class="text-sm text-surface-500 mt-1">Shows which sources provide data for this stock</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="badge {stalePrices || staleBroker || staleFinancials || staleScores ? 'variant-soft-warning' : 'variant-soft-success'}">
+            {stalePrices || staleBroker || staleFinancials || staleScores ? `Some Stale (>${STALE_DAYS}d)` : 'All Fresh'}
+          </span>
+          <button
+            onclick={refreshData}
+            disabled={isRefreshing}
+            class="btn btn-sm {isRefreshing ? 'variant-ghost-surface' : 'variant-filled-primary'}"
+          >
+            {#if isRefreshing}
+              <ProgressRadial width="w-4" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+              <span>Refreshing...</span>
+            {:else}
+              Refresh Data
+            {/if}
+          </button>
+          <a href="/admin/data-status" class="btn btn-sm variant-ghost-primary">
+            View All Sources
+          </a>
+        </div>
       </div>
 
-      {#if stalePrices || staleBroker || staleFinancials || staleScores}
-        <div class="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-sm">
-          Some data is older than {STALE_DAYS} days or missing. Consider re-running scrapers (prices/broker flow) and recomputing scores.
+      {#if refreshSuccess}
+        <div class="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/30 text-green-900 dark:text-green-200 text-sm">
+          Data refreshed successfully! Freshness data updated.
         </div>
       {/if}
 
-      <dl class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
-          <dt class="text-slate-600 dark:text-slate-300">Prices</dt>
-          <dd class="font-medium {stalePrices ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
-            {formatAsOf(freshness.prices_as_of)}
-          </dd>
+      {#if refreshError}
+        <div class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-900 dark:text-red-200 text-sm">
+          {refreshError}
         </div>
-        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
-          <dt class="text-slate-600 dark:text-slate-300">Broker Flow</dt>
-          <dd class="font-medium {staleBroker ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
-            {formatAsOf(freshness.broker_flow_as_of)}
-          </dd>
+      {/if}
+
+      {#if refreshJobs.length > 0 && isRefreshing}
+        <div class="mb-4 p-3 rounded-lg bg-surface-100 dark:bg-surface-800">
+          <p class="text-sm font-medium mb-2">Job Progress:</p>
+          <div class="flex flex-wrap gap-2">
+            {#each refreshJobs as job}
+              <span class="badge {getJobStatusColor(job.status)}">
+                {job.source_name}: {job.status}
+              </span>
+            {/each}
+          </div>
         </div>
-        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
-          <dt class="text-slate-600 dark:text-slate-300">Fundamentals</dt>
-          <dd class="font-medium {staleFinancials ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
-            {formatAsOf(freshness.financials_as_of)}
-          </dd>
+      {/if}
+
+      {#if stalePrices || staleBroker || staleFinancials || staleScores}
+        <div class="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200 text-sm">
+          Some data is older than {STALE_DAYS} days or missing. Analysis may be less accurate.
         </div>
-        <div class="flex justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800">
-          <dt class="text-slate-600 dark:text-slate-300">Scores</dt>
-          <dd class="font-medium {staleScores ? 'text-amber-700 dark:text-amber-300' : 'text-slate-900 dark:text-slate-100'}">
-            {formatAsOf(freshness.scores_as_of)}
-          </dd>
+      {/if}
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="p-4 rounded-lg border-l-4 {hasPrices ? (stalePrices ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-slate-900 dark:text-slate-100">Yahoo Finance</h4>
+            <span class="badge text-xs {hasPrices ? (stalePrices ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
+              {hasPrices ? (stalePrices ? 'Stale' : 'Fresh') : 'No Data'}
+            </span>
+          </div>
+          <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
+            <strong>Provides:</strong> OHLCV prices, volume, historical data
+          </div>
+          <div class="text-xs text-slate-500">
+            <strong>Used in:</strong> Price chart, technical indicators (RSI, MACD, Bollinger)
+          </div>
+          <div class="mt-2 text-xs font-mono text-slate-500">
+            Updated: {formatAsOf(freshness.prices_as_of)}
+          </div>
         </div>
-      </dl>
+
+        <div class="p-4 rounded-lg border-l-4 {hasBroker ? (staleBroker ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-slate-900 dark:text-slate-100">Stockbit/IDX</h4>
+            <span class="badge text-xs {hasBroker ? (staleBroker ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
+              {hasBroker ? (staleBroker ? 'Stale' : 'Fresh') : 'No Data'}
+            </span>
+          </div>
+          <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
+            <strong>Provides:</strong> Broker flow, foreign/domestic net, accumulation data
+          </div>
+          <div class="text-xs text-slate-500">
+            <strong>Used in:</strong> Broker analysis, sentiment score, institutional tracking
+          </div>
+          <div class="mt-2 text-xs font-mono text-slate-500">
+            Updated: {formatAsOf(freshness.broker_flow_as_of)}
+          </div>
+        </div>
+
+        <div class="p-4 rounded-lg border-l-4 {hasFinancials ? (staleFinancials ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-slate-900 dark:text-slate-100">yfinance/Sectors.app</h4>
+            <span class="badge text-xs {hasFinancials ? (staleFinancials ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
+              {hasFinancials ? (staleFinancials ? 'Stale' : 'Fresh') : 'No Data'}
+            </span>
+          </div>
+          <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
+            <strong>Provides:</strong> P/E, P/B, ROE, ROA, debt ratios, margins
+          </div>
+          <div class="text-xs text-slate-500">
+            <strong>Used in:</strong> Fundamental tab, valuation metrics, fundamental score
+          </div>
+          <div class="mt-2 text-xs font-mono text-slate-500">
+            Updated: {formatAsOf(freshness.financials_as_of)}
+          </div>
+        </div>
+
+        <div class="p-4 rounded-lg border-l-4 {hasScores ? (staleScores ? 'border-l-amber-500 bg-amber-50/50 dark:bg-amber-900/20' : 'border-l-green-500 bg-green-50/50 dark:bg-green-900/20') : 'border-l-red-500 bg-red-50/50 dark:bg-red-900/20'}">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-bold text-slate-900 dark:text-slate-100">Computed Scores</h4>
+            <span class="badge text-xs {hasScores ? (staleScores ? 'variant-soft-warning' : 'variant-soft-success') : 'variant-soft-error'}">
+              {hasScores ? (staleScores ? 'Stale' : 'Fresh') : 'No Data'}
+            </span>
+          </div>
+          <div class="text-sm text-slate-600 dark:text-slate-300 mb-2">
+            <strong>Provides:</strong> Technical, fundamental, sentiment, ML scores
+          </div>
+          <div class="text-xs text-slate-500">
+            <strong>Used in:</strong> Score gauges, composite score, buy/sell signals
+          </div>
+          <div class="mt-2 text-xs font-mono text-slate-500">
+            Updated: {formatAsOf(freshness.scores_as_of)}
+          </div>
+        </div>
+      </div>
     </div>
   {/if}
 

@@ -202,6 +202,12 @@ interface TriggerResponse {
   job?: Job;
 }
 
+interface RefreshStockResponse {
+  symbol: string;
+  jobs: Job[];
+  message: string;
+}
+
 interface SkippedSource {
   source_id: string;
   reason: string;
@@ -456,6 +462,10 @@ class ApiClient {
     return this.fetch(`/api/stocks/${symbol}/freshness`);
   }
 
+  async refreshStockData(symbol: string): Promise<RefreshStockResponse> {
+    return this.fetch(`/api/stocks/${symbol}/refresh`, { method: 'POST' });
+  }
+
   async getTopScores(limit?: number): Promise<StockScore[]> {
     const params = limit ? `?limit=${limit}` : '';
     return this.fetch(`/api/stocks/scores/top${params}`);
@@ -616,5 +626,6 @@ export type {
   ConfigResponse,
   Job,
   JobStatus,
-  JobsListResponse
+  JobsListResponse,
+  RefreshStockResponse
 };

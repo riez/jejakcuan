@@ -1,6 +1,7 @@
 //! Stock-related routes
 
 use crate::auth::AuthUser;
+use crate::routes::jobs::Job;
 use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
@@ -8,19 +9,19 @@ use axum::{
     Json, Router,
 };
 use chrono::{Duration, Utc};
+use futures_util::StreamExt;
 use jejakcuan_core::{
     calculate_composite_score, FundamentalInput, FundamentalScoreEngine, ScoreWeights,
     TechnicalScoreEngine, TechnicalScoreInput,
 };
 use jejakcuan_db::{repositories, StockPriceRow, StockRow, StockScoreRow};
 use jejakcuan_technical::{calculate_ema20, calculate_ema50, calculate_macd, calculate_rsi14};
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
+use rust_decimal::Decimal;
+use rust_decimal_macros::dec;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
-use futures_util::StreamExt;
-use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
-use rust_decimal_macros::dec;
-use rust_decimal::Decimal;
 
 pub fn stock_routes() -> Router<Arc<AppState>> {
     Router::new()
@@ -32,6 +33,7 @@ pub fn stock_routes() -> Router<Arc<AppState>> {
         .route("/:symbol/score", get(get_stock_score))
         .route("/:symbol/fundamentals", get(get_stock_fundamentals))
         .route("/:symbol/freshness", get(get_stock_freshness))
+        .route("/:symbol/refresh", post(refresh_stock_data))
 }
 
 const SCORE_STALE_HOURS: i64 = 24;
@@ -123,23 +125,25 @@ async fn get_stock(
     tracing::debug!("get_stock called with symbol: {}", symbol);
     let upper_symbol = symbol.to_uppercase();
     tracing::debug!("Looking up stock: {}", upper_symbol);
-    
+
     let stock = repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| {
             tracing::error!("Database error: {}", e);
             (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
-    
+
     tracing::debug!("Stock query result: {:?}", stock.is_some());
-    
-    stock.ok_or_else(|| {
-        tracing::debug!("Stock not found: {}", upper_symbol);
-        (
-            axum::http::StatusCode::NOT_FOUND,
-            format!("Stock not found: {}", upper_symbol),
-        )
-    }).map(Json)
+
+    stock
+        .ok_or_else(|| {
+            tracing::debug!("Stock not found: {}", upper_symbol);
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("Stock not found: {}", upper_symbol),
+            )
+        })
+        .map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -176,7 +180,12 @@ async fn get_stock_score(
     repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (axum::http::StatusCode::NOT_FOUND, "Stock not found".to_string()))?;
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                "Stock not found".to_string(),
+            )
+        })?;
 
     let now = Utc::now();
     let existing = repositories::scores::get_stock_score(&state.db, &upper_symbol)
@@ -304,10 +313,16 @@ async fn compute_and_insert_score(
 
     let current_price = close_prices.last().copied().unwrap_or(Decimal::ZERO);
 
-    let ema20 = calculate_ema20(&close_prices).ok().and_then(|v| v.last().copied());
-    let ema50 = calculate_ema50(&close_prices).ok().and_then(|v| v.last().copied());
+    let ema20 = calculate_ema20(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
+    let ema50 = calculate_ema50(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
 
-    let rsi = calculate_rsi14(&close_prices).ok().and_then(|v| v.last().copied());
+    let rsi = calculate_rsi14(&close_prices)
+        .ok()
+        .and_then(|v| v.last().copied());
     let macd_histogram = calculate_macd(&close_prices)
         .ok()
         .and_then(|m| m.histogram.last().copied());
@@ -529,19 +544,15 @@ async fn get_stock_freshness(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .map(|p| p.time);
 
-    let broker_flow_as_of = repositories::broker_summary::get_latest_broker_summary_time(
-        &state.db,
-        &upper_symbol,
-    )
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let broker_flow_as_of =
+        repositories::broker_summary::get_latest_broker_summary_time(&state.db, &upper_symbol)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let financials_as_of = repositories::stocks::get_latest_financials_created_at(
-        &state.db,
-        &upper_symbol,
-    )
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let financials_as_of =
+        repositories::stocks::get_latest_financials_created_at(&state.db, &upper_symbol)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let scores_as_of = repositories::scores::get_stock_score(&state.db, &upper_symbol)
         .await
@@ -554,5 +565,79 @@ async fn get_stock_freshness(
         broker_flow_as_of,
         financials_as_of,
         scores_as_of,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct RefreshStockResponse {
+    pub symbol: String,
+    pub jobs: Vec<Job>,
+    pub message: String,
+}
+
+/// Refresh data for a specific stock by triggering all relevant scrapers
+async fn refresh_stock_data(
+    _user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(symbol): Path<String>,
+) -> Result<Json<RefreshStockResponse>, (axum::http::StatusCode, String)> {
+    let upper_symbol = symbol.to_uppercase();
+
+    // Verify stock exists
+    repositories::stocks::get_stock_by_symbol(&state.db, &upper_symbol)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("Stock not found: {}", upper_symbol),
+            )
+        })?;
+
+    let mut jobs = Vec::new();
+
+    let price_job = state
+        .job_manager
+        .spawn_job(
+            format!("stock-refresh-price-{}", upper_symbol),
+            format!("{} Price Data", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli price --days 60 {}",
+                upper_symbol
+            ),
+        )
+        .await;
+    jobs.push(price_job);
+
+    let broker_job = state
+        .job_manager
+        .spawn_job(
+            format!("stock-refresh-broker-{}", upper_symbol),
+            format!("{} Broker Flow", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli broker --days 30 {}",
+                upper_symbol
+            ),
+        )
+        .await;
+    jobs.push(broker_job);
+
+    let fundamental_job = state
+        .job_manager
+        .spawn_job(
+            format!("stock-refresh-fundamental-{}", upper_symbol),
+            format!("{} Fundamentals", upper_symbol),
+            format!(
+                "python -m jejakcuan_ml.scrapers.cli fundamental {}",
+                upper_symbol
+            ),
+        )
+        .await;
+    jobs.push(fundamental_job);
+
+    Ok(Json(RefreshStockResponse {
+        symbol: upper_symbol,
+        jobs,
+        message: "Data refresh started. Monitor job progress for completion.".to_string(),
     }))
 }
