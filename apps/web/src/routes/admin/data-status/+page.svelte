@@ -50,6 +50,33 @@
 		}
 	}
 
+	async function checkRunningJobs() {
+		try {
+			const jobsResponse = await api.getJobs();
+			for (const job of jobsResponse.jobs) {
+				if (job.status === 'running') {
+					activeJobs[job.source_id] = job;
+					sourceLoadingStates[job.source_id] = true;
+					triggerMessages[job.source_id] = {
+						source_id: job.source_id,
+						status: 'running',
+						message: `Job running since ${new Date(job.started_at).toLocaleTimeString()}`,
+						command: job.command,
+						started_at: job.started_at,
+						job_id: job.id,
+						job: job
+					};
+					startJobPolling(job.source_id, job.id);
+				}
+			}
+			activeJobs = { ...activeJobs };
+			sourceLoadingStates = { ...sourceLoadingStates };
+			triggerMessages = { ...triggerMessages };
+		} catch (e) {
+			console.error('Failed to check running jobs:', e);
+		}
+	}
+
 	async function triggerSource(sourceId: string) {
 		sourceLoadingStates[sourceId] = true;
 		sourceErrors[sourceId] = null;
@@ -84,7 +111,20 @@
 				const job = await api.getJob(jobId);
 				activeJobs[sourceId] = job;
 				
-				if (job.status === 'completed' || job.status === 'failed') {
+				const elapsedSecs = (Date.now() - new Date(job.started_at).getTime()) / 1000;
+				
+				if (job.status === 'running') {
+					triggerMessages[sourceId] = {
+						source_id: sourceId,
+						status: 'running',
+						message: `Running for ${elapsedSecs.toFixed(0)}s...`,
+						command: job.command,
+						started_at: job.started_at,
+						job_id: job.id,
+						job: { ...job, duration_secs: elapsedSecs }
+					};
+					triggerMessages = { ...triggerMessages };
+				} else if (job.status === 'completed' || job.status === 'failed') {
 					clearInterval(jobPollingIntervals[sourceId]);
 					delete jobPollingIntervals[sourceId];
 					sourceLoadingStates[sourceId] = false;
@@ -242,8 +282,9 @@
 		return data.by_category[category] || [];
 	}
 
-	onMount(() => {
-		fetchStatus();
+	onMount(async () => {
+		await fetchStatus();
+		await checkRunningJobs();
 		refreshInterval = setInterval(fetchStatus, 30000);
 	});
 
