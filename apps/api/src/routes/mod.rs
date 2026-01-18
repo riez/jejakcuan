@@ -1,13 +1,17 @@
 //! API routes
 
+pub mod admin;
 pub mod analysis;
 pub mod auth;
+pub mod jobs;
 pub mod stocks;
 pub mod streaming;
 pub mod watchlist;
 
+pub use admin::admin_routes;
 pub use analysis::analysis_routes;
 pub use auth::auth_routes;
+pub use jobs::JobManager;
 pub use stocks::stock_routes;
 pub use streaming::streaming_routes;
 pub use watchlist::watchlist_routes;

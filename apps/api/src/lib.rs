@@ -19,17 +19,26 @@ pub mod notifications;
 pub mod routes;
 
 use config::Config;
-use routes::{analysis_routes, auth_routes, stock_routes, streaming_routes, watchlist_routes};
+use routes::{
+    admin_routes, analysis_routes, auth_routes, stock_routes, streaming_routes, watchlist_routes,
+    JobManager,
+};
 
 /// Application state shared across all handlers
 pub struct AppState {
     pub db: PgPool,
     pub config: Config,
+    pub job_manager: Arc<JobManager>,
 }
 
 /// Create the application router with all routes configured
 pub fn create_app(db: PgPool, config: Config) -> Router {
-    let state = Arc::new(AppState { db, config });
+    let job_manager = Arc::new(JobManager::new());
+    let state = Arc::new(AppState {
+        db,
+        config,
+        job_manager,
+    });
 
     Router::new()
         .route("/", get(root))
@@ -39,6 +48,7 @@ pub fn create_app(db: PgPool, config: Config) -> Router {
         .nest("/api/analysis", analysis_routes())
         .nest("/api/watchlist", watchlist_routes())
         .nest("/api", streaming_routes())
+        .nest("/api/admin", admin_routes())
         .layer(
             CorsLayer::new()
                 .allow_origin(AllowOrigin::list([

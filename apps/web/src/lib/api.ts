@@ -77,6 +77,149 @@ interface FundamentalData {
   sector_avg_pb: number | null;
 }
 
+// Admin Types (Legacy)
+interface DataSourceStatus {
+  id: string;
+  name: string;
+  source_type: string;
+  last_update: string | null;
+  record_count: number;
+  status: string;
+  freshness_hours: number | null;
+  can_refresh: boolean;
+}
+
+interface DataSummary {
+  total_stocks: number;
+  stocks_with_prices: number;
+  stocks_with_scores: number;
+  stocks_with_broker_data: number;
+  oldest_price_data: string | null;
+  newest_price_data: string | null;
+}
+
+interface DataStatusResponse {
+  timestamp: string;
+  overall_status: string;
+  sources: DataSourceStatus[];
+  summary: DataSummary;
+}
+
+interface RefreshResponse {
+  source_id: string;
+  status: string;
+  message: string;
+  started_at: string;
+}
+
+// Granular Data Source Types
+type DataSourceCategory = 'broker' | 'prices' | 'fundamentals' | 'scores';
+type SourceType = 'python_scraper' | 'rust_client' | 'computed';
+type DataSourceState = 'fresh' | 'stale' | 'outdated' | 'no_data' | 'not_configured' | 'running' | 'error';
+
+interface ConfigFieldStatus {
+  name: string;
+  description: string;
+  env_var: string;
+  required: boolean;
+  is_set: boolean;
+}
+
+interface ConfigStatus {
+  is_configured: boolean;
+  missing_fields: string[];
+  config_fields: ConfigFieldStatus[];
+}
+
+interface GranularDataSource {
+  id: string;
+  name: string;
+  category: DataSourceCategory;
+  category_name: string;
+  source_type: SourceType;
+  description: string;
+  status: DataSourceState;
+  config_status: ConfigStatus;
+  last_update: string | null;
+  record_count: number;
+  freshness_hours: number | null;
+  can_trigger: boolean;
+  trigger_command: string | null;
+}
+
+interface CategorySummary {
+  category: string;
+  display_name: string;
+  total: number;
+  fresh: number;
+  stale: number;
+  not_configured: number;
+}
+
+interface DataSourcesSummary {
+  total_sources: number;
+  configured_sources: number;
+  fresh_sources: number;
+  stale_sources: number;
+  categories: CategorySummary[];
+}
+
+interface DataSourcesResponse {
+  timestamp: string;
+  overall_status: string;
+  sources: GranularDataSource[];
+  by_category: Record<string, GranularDataSource[]>;
+  summary: DataSourcesSummary;
+}
+
+type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+interface Job {
+  id: string;
+  source_id: string;
+  source_name: string;
+  command: string;
+  status: JobStatus;
+  message: string | null;
+  output: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_secs: number | null;
+}
+
+interface JobsListResponse {
+  jobs: Job[];
+  count: number;
+}
+
+interface TriggerResponse {
+  source_id: string;
+  status: string;
+  message: string;
+  command: string | null;
+  started_at: string;
+  job_id?: string;
+  job?: Job;
+}
+
+interface SkippedSource {
+  source_id: string;
+  reason: string;
+}
+
+interface CategoryTriggerResponse {
+  category: string;
+  triggered: TriggerResponse[];
+  skipped: SkippedSource[];
+}
+
+interface ConfigResponse {
+  source_id: string;
+  source_name: string;
+  fields: ConfigFieldStatus[];
+  is_configured: boolean;
+}
+
 // Analysis Types
 interface BrokerInfo {
   code: string;
@@ -212,6 +355,9 @@ class ApiClient {
     if (!response.ok) {
       if (response.status === 401) {
         this.setToken(null);
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login';
+        }
         throw new Error('Unauthorized');
       }
       const error = await response.text();
@@ -384,6 +530,50 @@ class ApiClient {
       throw error;
     }
   }
+
+  async getDataStatus(): Promise<DataStatusResponse> {
+    return this.fetch('/api/admin/data-status');
+  }
+
+  async getSourceStatus(sourceId: string): Promise<DataSourceStatus> {
+    return this.fetch(`/api/admin/data-status/${sourceId}`);
+  }
+
+  async refreshSource(sourceId: string): Promise<RefreshResponse> {
+    return this.fetch(`/api/admin/data-status/${sourceId}/refresh`, { method: 'POST' });
+  }
+
+  async getDataSources(): Promise<DataSourcesResponse> {
+    return this.fetch('/api/admin/data-sources');
+  }
+
+  async getDataSource(sourceId: string): Promise<GranularDataSource> {
+    return this.fetch(`/api/admin/data-sources/${sourceId}`);
+  }
+
+  async triggerDataSource(sourceId: string): Promise<TriggerResponse> {
+    return this.fetch(`/api/admin/data-sources/${sourceId}/trigger`, { method: 'POST' });
+  }
+
+  async triggerCategory(category: string): Promise<CategoryTriggerResponse> {
+    return this.fetch(`/api/admin/data-sources/category/${category}/trigger`, { method: 'POST' });
+  }
+
+  async getSourceConfig(sourceId: string): Promise<ConfigResponse> {
+    return this.fetch(`/api/admin/data-sources/${sourceId}/config`);
+  }
+
+  async getJobs(): Promise<JobsListResponse> {
+    return this.fetch('/api/admin/jobs');
+  }
+
+  async getJob(jobId: string): Promise<Job> {
+    return this.fetch(`/api/admin/jobs/${jobId}`);
+  }
+
+  async getSourceJobs(sourceId: string): Promise<JobsListResponse> {
+    return this.fetch(`/api/admin/jobs/source/${sourceId}`);
+  }
 }
 
 export const api = new ApiClient();
@@ -406,5 +596,25 @@ export type {
   TASummary,
   BollingerResponse,
   StrategyResponse,
-  RecomputeScoresResponse
+  RecomputeScoresResponse,
+  DataStatusResponse,
+  DataSourceStatus,
+  DataSummary,
+  RefreshResponse,
+  DataSourceCategory,
+  SourceType,
+  DataSourceState,
+  ConfigFieldStatus,
+  ConfigStatus,
+  GranularDataSource,
+  CategorySummary,
+  DataSourcesSummary,
+  DataSourcesResponse,
+  TriggerResponse,
+  SkippedSource,
+  CategoryTriggerResponse,
+  ConfigResponse,
+  Job,
+  JobStatus,
+  JobsListResponse
 };
