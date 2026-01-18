@@ -159,7 +159,6 @@ impl JobManager {
     }
 }
 
-/// Execute a shell command and return output
 async fn execute_command(command: &str) -> Result<String, String> {
     let parts: Vec<&str> = command.split_whitespace().collect();
     if parts.is_empty() {
@@ -186,24 +185,39 @@ async fn execute_command(command: &str) -> Result<String, String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    if output.status.success() {
-        let msg = if stdout.is_empty() {
-            "Completed successfully (no output)".to_string()
-        } else {
-            // Return last 20 lines
-            let lines: Vec<&str> = stdout.lines().collect();
-            let last_lines: Vec<&str> = lines.iter().rev().take(20).rev().cloned().collect();
-            last_lines.join("\n")
-        };
-        Ok(msg)
+    let combined = if !stdout.is_empty() && !stderr.is_empty() {
+        format!("{}\n{}", stderr, stdout)
+    } else if !stderr.is_empty() {
+        stderr
     } else {
-        let error_msg = if stderr.is_empty() {
-            format!("Exit code: {:?}\n{}", output.status.code(), stdout)
+        stdout
+    };
+
+    let truncate_output = |text: &str, max_lines: usize| -> String {
+        let lines: Vec<&str> = text.lines().collect();
+        if lines.len() <= max_lines {
+            text.to_string()
         } else {
-            // Return last 20 lines of stderr
-            let lines: Vec<&str> = stderr.lines().collect();
-            let last_lines: Vec<&str> = lines.iter().rev().take(20).rev().cloned().collect();
-            last_lines.join("\n")
+            let last_lines: Vec<&str> = lines.iter().rev().take(max_lines).rev().cloned().collect();
+            format!(
+                "... ({} lines truncated)\n{}",
+                lines.len() - max_lines,
+                last_lines.join("\n")
+            )
+        }
+    };
+
+    if output.status.success() {
+        if combined.is_empty() {
+            Ok("Completed successfully (no output)".to_string())
+        } else {
+            Ok(truncate_output(&combined, 30))
+        }
+    } else {
+        let error_msg = if combined.is_empty() {
+            format!("Exit code: {:?}", output.status.code())
+        } else {
+            truncate_output(&combined, 30)
         };
         Err(error_msg)
     }
