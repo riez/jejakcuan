@@ -37,7 +37,9 @@ impl SectorsClient {
             .timeout(DEFAULT_TIMEOUT)
             .user_agent("JejakCuan/1.0")
             .build()
-            .map_err(|e| DataSourceError::ApiError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                DataSourceError::ApiError(format!("Failed to create HTTP client: {}", e))
+            })?;
 
         Ok(Self { client, api_key })
     }
@@ -163,9 +165,7 @@ impl SectorsClient {
         &self,
         limit: i32,
     ) -> Result<CompaniesResponse, DataSourceError> {
-        let query = CompanyQuery::new()
-            .order_by("-market_cap")
-            .limit(limit);
+        let query = CompanyQuery::new().order_by("-market_cap").limit(limit);
         self.search_companies(query).await
     }
 
@@ -235,6 +235,24 @@ impl SectorsClient {
         self.get_with_retry(&url, &[]).await
     }
 
+    /// Get full company report with historical financials
+    pub async fn get_company_report(&self, symbol: &str) -> Result<CompanyReport, DataSourceError> {
+        let url = format!("{}/companies/{}/", BASE_URL_V1, symbol);
+        self.get_with_retry(&url, &[]).await
+    }
+
+    /// Get company historical financials only
+    pub async fn get_historical_financials(
+        &self,
+        symbol: &str,
+    ) -> Result<Vec<HistoricalFinancial>, DataSourceError> {
+        let report = self.get_company_report(symbol).await?;
+        Ok(report
+            .financials
+            .map(|f| f.historical_financials)
+            .unwrap_or_default())
+    }
+
     /// Check if client is properly configured
     pub fn is_configured(&self) -> bool {
         !self.api_key.is_empty()
@@ -260,8 +278,7 @@ mod tests {
 
     #[test]
     fn test_company_query_natural() {
-        let query = CompanyQuery::new()
-            .natural_query("top 10 banks by market cap");
+        let query = CompanyQuery::new().natural_query("top 10 banks by market cap");
         let params = query.to_params();
         assert_eq!(params.len(), 1);
         assert_eq!(params[0].0, "q");

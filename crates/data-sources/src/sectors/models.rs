@@ -137,6 +137,110 @@ pub struct KeyExecutive {
     pub position: Option<String>,
 }
 
+/// Historical financial data from Sectors.app company report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoricalFinancial {
+    pub year: i32,
+    #[serde(default)]
+    pub revenue: Option<i64>,
+    #[serde(default)]
+    pub earnings: Option<i64>,
+    #[serde(default)]
+    pub tax: Option<i64>,
+    #[serde(default)]
+    pub gross_profit: Option<i64>,
+    #[serde(default)]
+    pub operating_pnl: Option<i64>,
+    #[serde(default)]
+    pub earnings_before_tax: Option<i64>,
+    #[serde(default)]
+    pub total_assets: Option<i64>,
+    #[serde(default)]
+    pub total_equity: Option<i64>,
+    #[serde(default)]
+    pub total_liabilities: Option<i64>,
+    #[serde(default)]
+    pub total_debt: Option<i64>,
+    #[serde(default)]
+    pub operating_cash_flow: Option<i64>,
+    #[serde(default)]
+    pub free_cash_flow: Option<i64>,
+    #[serde(default)]
+    pub capex: Option<i64>,
+    #[serde(default)]
+    pub eps: Option<Decimal>,
+    #[serde(default)]
+    pub roe: Option<Decimal>,
+    #[serde(default)]
+    pub roa: Option<Decimal>,
+    #[serde(default)]
+    pub net_profit_margin: Option<Decimal>,
+    #[serde(default)]
+    pub gross_profit_margin: Option<Decimal>,
+    #[serde(default)]
+    pub operating_margin: Option<Decimal>,
+    #[serde(default)]
+    pub debt_to_equity: Option<Decimal>,
+    #[serde(default)]
+    pub current_ratio: Option<Decimal>,
+}
+
+/// Company overview data from Sectors.app
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanyOverview {
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub website: Option<String>,
+    #[serde(default)]
+    pub headquarters: Option<String>,
+    #[serde(default)]
+    pub employee_num: Option<i32>,
+    #[serde(default)]
+    pub listing_date: Option<NaiveDate>,
+    #[serde(default)]
+    pub listing_board: Option<String>,
+}
+
+/// Financials section from company report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanyFinancialsSection {
+    #[serde(default)]
+    pub historical_financials: Vec<HistoricalFinancial>,
+    #[serde(default)]
+    pub latest: Option<CompanyFinancials>,
+}
+
+/// Full company report from Sectors.app
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanyReport {
+    pub symbol: String,
+    #[serde(default)]
+    pub company_name: Option<String>,
+    #[serde(default)]
+    pub sector: Option<String>,
+    #[serde(default)]
+    pub sub_sector: Option<String>,
+    #[serde(default)]
+    pub industry: Option<String>,
+    #[serde(default)]
+    pub sub_industry: Option<String>,
+    #[serde(default)]
+    pub market_cap: Option<i64>,
+    #[serde(default)]
+    pub last_close_price: Option<Decimal>,
+    #[serde(default)]
+    pub overview: Option<CompanyOverview>,
+    #[serde(default)]
+    pub financials: Option<CompanyFinancialsSection>,
+    #[serde(default)]
+    pub peers: Option<Vec<String>>,
+    #[serde(default)]
+    pub major_shareholders: Option<Vec<MajorShareholder>>,
+    #[serde(default)]
+    pub key_executives: Option<Vec<KeyExecutive>>,
+}
+
 /// Daily transaction data
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DailyTransaction {

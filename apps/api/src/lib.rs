@@ -20,8 +20,8 @@ pub mod routes;
 
 use config::Config;
 use routes::{
-    admin_routes, analysis_routes, auth_routes, stock_routes, streaming_routes, watchlist_routes,
-    JobManager,
+    admin_routes, analysis_routes, auth_routes, financials_routes, stock_routes, streaming_routes,
+    watchlist_routes, JobManager,
 };
 
 /// Application state shared across all handlers
@@ -45,6 +45,7 @@ pub fn create_app(db: PgPool, config: Config) -> Router {
         .route("/health", get(health))
         .nest("/api/auth", auth_routes())
         .nest("/api/stocks", stock_routes())
+        .nest("/api/financials", financials_routes())
         .nest("/api/analysis", analysis_routes())
         .nest("/api/watchlist", watchlist_routes())
         .nest("/api", streaming_routes())
