@@ -30,3 +30,4 @@ worktrees/
 # Environment
 .env
 .env.local
+.agentastic/
