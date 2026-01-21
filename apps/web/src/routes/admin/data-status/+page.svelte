@@ -55,7 +55,28 @@
 	async function checkRunningJobs() {
 		try {
 			const jobsResponse = await api.getJobs();
+			
+			// Group jobs by category based on source_id prefix
+			const jobsByCategory: Record<string, Job[]> = {};
+			const runningJobIdsByCategory: Record<string, string[]> = {};
+			
 			for (const job of jobsResponse.jobs) {
+				// Determine category from source_id (e.g., "broker-flow" -> "broker", "prices-yahoo" -> "prices")
+				const category = getCategoryFromSourceId(job.source_id);
+				
+				if (category) {
+					if (!jobsByCategory[category]) {
+						jobsByCategory[category] = [];
+						runningJobIdsByCategory[category] = [];
+					}
+					jobsByCategory[category].push(job);
+					
+					if (job.status === 'running' || job.status === 'pending') {
+						runningJobIdsByCategory[category].push(job.id);
+					}
+				}
+				
+				// Also handle individual source loading states
 				if (job.status === 'running') {
 					activeJobs[job.source_id] = job;
 					sourceLoadingStates[job.source_id] = true;
@@ -71,12 +92,44 @@
 					startJobPolling(job.source_id, job.id);
 				}
 			}
+			
+			// Restore category job logs and start polling for categories with running jobs
+			for (const [category, jobs] of Object.entries(jobsByCategory)) {
+				// Only show logs if there are recent jobs (within last 5 minutes) or running jobs
+				const hasRunningJobs = runningJobIdsByCategory[category]?.length > 0;
+				const hasRecentJobs = jobs.some(j => {
+					const startedAt = new Date(j.started_at).getTime();
+					const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+					return startedAt > fiveMinutesAgo;
+				});
+				
+				if (hasRunningJobs || hasRecentJobs) {
+					categoryJobLogs[category] = jobs;
+					categoryLoading[category] = hasRunningJobs;
+					
+					if (hasRunningJobs) {
+						// Start polling for this category
+						startCategoryJobPolling(category, runningJobIdsByCategory[category]);
+					}
+				}
+			}
+			
 			activeJobs = { ...activeJobs };
 			sourceLoadingStates = { ...sourceLoadingStates };
 			triggerMessages = { ...triggerMessages };
+			categoryJobLogs = { ...categoryJobLogs };
+			categoryLoading = { ...categoryLoading };
 		} catch (e) {
 			console.error('Failed to check running jobs:', e);
 		}
+	}
+	
+	function getCategoryFromSourceId(sourceId: string): string | null {
+		if (sourceId.startsWith('broker')) return 'broker';
+		if (sourceId.startsWith('price')) return 'prices';
+		if (sourceId.startsWith('fundamental') || sourceId.startsWith('sectors') || sourceId.startsWith('financials')) return 'fundamentals';
+		if (sourceId.startsWith('score')) return 'scores';
+		return null;
 	}
 
 	async function triggerSource(sourceId: string) {
