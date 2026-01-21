@@ -523,18 +523,33 @@
 						</div>
 						<span class="text-2xl transition-transform ml-4" class:rotate-180={isExpanded}>▼</span>
 					</button>
-					<button
-						class="btn btn-sm variant-ghost-primary ml-4"
-						on:click={() => triggerCategoryRefresh(category)}
-						disabled={isCategoryLoading || bulkRefreshing}
-						title="Refresh all {category} sources"
-					>
+					<div class="flex items-center gap-2 ml-4">
 						{#if isCategoryLoading}
-							<ProgressRadial width="w-4" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+							<button
+								class="btn btn-sm variant-ghost-primary"
+								disabled
+							>
+								<ProgressRadial width="w-4" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+								<span>Running...</span>
+							</button>
+							<button
+								class="btn btn-sm variant-filled-error"
+								on:click={() => cancelCategoryRefresh(category)}
+								title="Stop refresh"
+							>
+								■ Stop
+							</button>
 						{:else}
-							<span>↻ Refresh All</span>
+							<button
+								class="btn btn-sm variant-ghost-primary"
+								on:click={() => triggerCategoryRefresh(category)}
+								disabled={bulkRefreshing}
+								title="Refresh all {category} sources"
+							>
+								<span>↻ Refresh All</span>
+							</button>
 						{/if}
-					</button>
+					</div>
 				</div>
 
 			{#if categoryMessage || (categoryJobLogs[category] && categoryJobLogs[category].length > 0)}
