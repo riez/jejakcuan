@@ -622,6 +622,12 @@ class ApiClient {
   async getSourceJobs(sourceId: string): Promise<JobsListResponse> {
     return this.fetch(`/api/admin/jobs/source/${sourceId}`);
   }
+
+  async cancelJob(jobId: string): Promise<Job> {
+    return this.fetch(`/api/admin/jobs/${jobId}/cancel`, {
+      method: 'POST',
+    });
+  }
 }
 
 export const api = new ApiClient();

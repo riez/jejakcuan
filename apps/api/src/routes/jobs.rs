@@ -157,6 +157,24 @@ impl JobManager {
             .find(|j| j.source_id == source_id && matches!(j.status, JobStatus::Running))
             .cloned()
     }
+
+    /// Cancel a job by marking it as failed with "Cancelled by user" message
+    pub async fn cancel_job(&self, job_id: &str) -> Option<Job> {
+        let mut jobs = self.jobs.write().await;
+        if let Some(job) = jobs.get_mut(job_id) {
+            if matches!(job.status, JobStatus::Running | JobStatus::Pending) {
+                job.status = JobStatus::Failed;
+                job.message = Some("Cancelled by user".to_string());
+                job.completed_at = Some(Utc::now());
+                if job.duration_secs.is_none() {
+                    job.duration_secs =
+                        Some((Utc::now() - job.started_at).num_milliseconds() as f64 / 1000.0);
+                }
+                return Some(job.clone());
+            }
+        }
+        None
+    }
 }
 
 async fn execute_command(command: &str) -> Result<String, String> {

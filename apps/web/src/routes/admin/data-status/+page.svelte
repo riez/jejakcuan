@@ -392,7 +392,19 @@
 		}
 	}
 	
-	function cancelCategoryRefresh(category: string) {
+	async function cancelCategoryRefresh(category: string) {
+		// Cancel all running jobs for this category via API
+		const jobs = categoryJobLogs[category] || [];
+		const runningJobs = jobs.filter(j => j.status === 'running' || j.status === 'pending');
+		
+		for (const job of runningJobs) {
+			try {
+				await api.cancelJob(job.id);
+			} catch (e) {
+				console.error(`Failed to cancel job ${job.id}:`, e);
+			}
+		}
+		
 		// Stop polling
 		if (categoryJobPolling[category]) {
 			clearInterval(categoryJobPolling[category]);
@@ -403,11 +415,26 @@
 		categoryLoading[category] = false;
 		categoryLoading = { ...categoryLoading };
 		
-		// Keep the logs but mark as cancelled (don't clear, so user can see what was running)
-		console.log(`Cancelled refresh for category: ${category}`);
+		// Update job logs to show cancelled status
+		categoryJobLogs[category] = jobs.map(j => 
+			(j.status === 'running' || j.status === 'pending') 
+				? { ...j, status: 'failed' as const, message: 'Cancelled by user' }
+				: j
+		);
+		categoryJobLogs = { ...categoryJobLogs };
 	}
 	
-	function cancelSourceRefresh(sourceId: string) {
+	async function cancelSourceRefresh(sourceId: string) {
+		// Cancel the job via API
+		const activeJob = activeJobs[sourceId];
+		if (activeJob) {
+			try {
+				await api.cancelJob(activeJob.id);
+			} catch (e) {
+				console.error(`Failed to cancel job ${activeJob.id}:`, e);
+			}
+		}
+		
 		// Stop polling for this source
 		if (jobPollingIntervals[sourceId]) {
 			clearInterval(jobPollingIntervals[sourceId]);
@@ -422,11 +449,15 @@
 		delete activeJobs[sourceId];
 		activeJobs = { ...activeJobs };
 		
-		// Clear trigger message
-		triggerMessages[sourceId] = null;
+		// Update trigger message to show cancelled
+		if (triggerMessages[sourceId]) {
+			triggerMessages[sourceId] = {
+				...triggerMessages[sourceId]!,
+				status: 'failed',
+				message: 'Cancelled by user'
+			};
+		}
 		triggerMessages = { ...triggerMessages };
-		
-		console.log(`Cancelled refresh for source: ${sourceId}`);
 	}
 
 	function getSourcesByCategory(category: string): GranularDataSource[] {

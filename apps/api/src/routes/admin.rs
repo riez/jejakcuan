@@ -37,6 +37,7 @@ pub fn admin_routes() -> Router<Arc<AppState>> {
         // Job management endpoints
         .route("/jobs", get(list_jobs))
         .route("/jobs/:job_id", get(get_job))
+        .route("/jobs/:job_id/cancel", post(cancel_job))
         .route("/jobs/source/:source_id", get(get_source_jobs))
 }
 
@@ -1150,6 +1151,24 @@ async fn get_source_jobs(
     let jobs = state.job_manager.get_jobs_for_source(&source_id).await;
     let count = jobs.len();
     Ok(Json(JobsListResponse { jobs, count }))
+}
+
+async fn cancel_job(
+    _user: AuthUser,
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+) -> Result<Json<Job>, (axum::http::StatusCode, String)> {
+    state
+        .job_manager
+        .cancel_job(&job_id)
+        .await
+        .ok_or_else(|| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("Job not found or already completed: {}", job_id),
+            )
+        })
+        .map(Json)
 }
 
 async fn trigger_category(
