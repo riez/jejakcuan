@@ -88,3 +88,47 @@ pub async fn get_latest_broker_summary_time(
     .fetch_one(pool)
     .await
 }
+
+#[derive(Debug, Clone, FromRow)]
+pub struct DailyBrokerSummaryRow {
+    pub time: DateTime<Utc>,
+    pub broker_code: String,
+    pub category: String,
+    pub buy_volume: i64,
+    pub sell_volume: i64,
+    pub buy_value: Decimal,
+    pub sell_value: Decimal,
+    pub net_volume: i64,
+    pub net_value: Decimal,
+}
+
+pub async fn get_daily_broker_summaries(
+    pool: &PgPool,
+    symbol: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Vec<DailyBrokerSummaryRow>, sqlx::Error> {
+    sqlx::query_as::<_, DailyBrokerSummaryRow>(
+        r#"
+        SELECT
+            bs.time,
+            bs.broker_code,
+            COALESCE(b.category, 'unknown') AS category,
+            bs.buy_volume::bigint AS buy_volume,
+            bs.sell_volume::bigint AS sell_volume,
+            bs.buy_value,
+            bs.sell_value,
+            bs.net_volume::bigint AS net_volume,
+            bs.net_value
+        FROM broker_summary bs
+        LEFT JOIN brokers b ON b.code = bs.broker_code
+        WHERE bs.symbol = $1 AND bs.time >= $2 AND bs.time <= $3
+        ORDER BY bs.time ASC, bs.net_value DESC
+        "#,
+    )
+    .bind(symbol)
+    .bind(from)
+    .bind(to)
+    .fetch_all(pool)
+    .await
+}
