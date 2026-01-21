@@ -156,8 +156,9 @@ pub fn detect_wyckoff_phase(
     let events = detect_wyckoff_events(bars, config, support, resistance);
 
     // Determine phase based on trend, volatility, and events
-    let (phase, confidence) =
-        determine_phase(&closes, &volumes, trend, &events, support, resistance, config);
+    let (phase, confidence) = determine_phase(
+        &closes, &volumes, trend, &events, support, resistance, config,
+    );
 
     let description = generate_phase_description(phase, &events);
 
@@ -408,9 +409,7 @@ fn is_large_down_candle(bar: &OhlcvBar) -> bool {
 
 fn is_near_level(price: Decimal, level: Option<Decimal>, config: &WyckoffConfig) -> bool {
     match level {
-        Some(lvl) if lvl != Decimal::ZERO => {
-            ((price - lvl) / lvl).abs() <= config.sr_tolerance
-        }
+        Some(lvl) if lvl != Decimal::ZERO => ((price - lvl) / lvl).abs() <= config.sr_tolerance,
         _ => false,
     }
 }
@@ -624,7 +623,10 @@ fn generate_phase_description(phase: WyckoffPhase, events: &[WyckoffEventDetecti
 mod tests {
     use super::*;
 
-    fn create_test_bars(prices: &[(Decimal, Decimal, Decimal, Decimal)], volumes: &[i64]) -> Vec<OhlcvBar> {
+    fn create_test_bars(
+        prices: &[(Decimal, Decimal, Decimal, Decimal)],
+        volumes: &[i64],
+    ) -> Vec<OhlcvBar> {
         prices
             .iter()
             .zip(volumes.iter())
@@ -739,7 +741,10 @@ mod tests {
         let config = WyckoffConfig::default();
 
         let result = detect_wyckoff_phase(&bars, &config);
-        assert!(matches!(result, Err(TechnicalError::InsufficientData { .. })));
+        assert!(matches!(
+            result,
+            Err(TechnicalError::InsufficientData { .. })
+        ));
     }
 
     #[test]

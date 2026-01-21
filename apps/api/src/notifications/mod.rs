@@ -7,12 +7,12 @@
 //! - Web push notifications
 //! - In-app notifications via WebSocket/SSE
 
-mod telegram;
 mod email;
+mod telegram;
 mod webhook;
 
-pub use telegram::*;
 pub use email::*;
+pub use telegram::*;
 pub use webhook::*;
 
 use async_trait::async_trait;
@@ -43,10 +43,10 @@ pub enum NotificationError {
 pub trait NotificationSender: Send + Sync {
     /// Send a notification
     async fn send(&self, notification: &Notification) -> NotificationResult<()>;
-    
+
     /// Check if channel is configured and ready
     fn is_configured(&self) -> bool;
-    
+
     /// Get channel type
     fn channel_type(&self) -> NotificationChannel;
 }
@@ -158,7 +158,11 @@ impl NotificationService {
     }
 
     /// Send notification to all configured channels for a user
-    pub async fn broadcast(&self, notification: &Notification, channels: &[NotificationChannel]) -> Vec<(NotificationChannel, NotificationResult<()>)> {
+    pub async fn broadcast(
+        &self,
+        notification: &Notification,
+        channels: &[NotificationChannel],
+    ) -> Vec<(NotificationChannel, NotificationResult<()>)> {
         let mut results = Vec::new();
 
         for channel in channels {

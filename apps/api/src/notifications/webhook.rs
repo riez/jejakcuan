@@ -98,8 +98,8 @@ impl NotificationSender for WebhookNotifier {
         }
 
         let payload = self.create_payload(notification);
-        let payload_json =
-            serde_json::to_string(&payload).map_err(|e| NotificationError::SendFailed(e.to_string()))?;
+        let payload_json = serde_json::to_string(&payload)
+            .map_err(|e| NotificationError::SendFailed(e.to_string()))?;
 
         let mut request = self
             .client

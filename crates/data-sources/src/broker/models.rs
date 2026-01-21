@@ -69,19 +69,34 @@ mod tests {
     #[test]
     fn test_broker_category_weights() {
         // Foreign institutional should have highest weight
-        assert_eq!(BrokerCategory::ForeignInstitutional.weight(), Decimal::from(1));
+        assert_eq!(
+            BrokerCategory::ForeignInstitutional.weight(),
+            Decimal::from(1)
+        );
         // Local institutional should be 0.8
-        assert_eq!(BrokerCategory::LocalInstitutional.weight(), Decimal::from_str("0.8").unwrap());
+        assert_eq!(
+            BrokerCategory::LocalInstitutional.weight(),
+            Decimal::from_str("0.8").unwrap()
+        );
         // Retail should be 0.3
-        assert_eq!(BrokerCategory::Retail.weight(), Decimal::from_str("0.3").unwrap());
+        assert_eq!(
+            BrokerCategory::Retail.weight(),
+            Decimal::from_str("0.3").unwrap()
+        );
         // Unknown should be 0.5
-        assert_eq!(BrokerCategory::Unknown.weight(), Decimal::from_str("0.5").unwrap());
+        assert_eq!(
+            BrokerCategory::Unknown.weight(),
+            Decimal::from_str("0.5").unwrap()
+        );
     }
 
     #[test]
     fn test_broker_category_weight_ordering() {
         // Ensure weight ordering makes sense: Foreign > Local > Unknown > Retail
-        assert!(BrokerCategory::ForeignInstitutional.weight() > BrokerCategory::LocalInstitutional.weight());
+        assert!(
+            BrokerCategory::ForeignInstitutional.weight()
+                > BrokerCategory::LocalInstitutional.weight()
+        );
         assert!(BrokerCategory::LocalInstitutional.weight() > BrokerCategory::Unknown.weight());
         assert!(BrokerCategory::Unknown.weight() > BrokerCategory::Retail.weight());
     }
@@ -157,8 +172,14 @@ mod tests {
 
     #[test]
     fn test_broker_category_equality() {
-        assert_eq!(BrokerCategory::ForeignInstitutional, BrokerCategory::ForeignInstitutional);
-        assert_ne!(BrokerCategory::ForeignInstitutional, BrokerCategory::LocalInstitutional);
+        assert_eq!(
+            BrokerCategory::ForeignInstitutional,
+            BrokerCategory::ForeignInstitutional
+        );
+        assert_ne!(
+            BrokerCategory::ForeignInstitutional,
+            BrokerCategory::LocalInstitutional
+        );
         assert_ne!(BrokerCategory::Retail, BrokerCategory::Unknown);
     }
 }

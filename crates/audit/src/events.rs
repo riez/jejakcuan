@@ -205,43 +205,76 @@ pub mod events {
     pub fn login(username: &str, success: bool) -> AuditEvent {
         AuditEvent::new(
             EventCategory::Authentication,
-            if success { Severity::Info } else { Severity::Warning },
+            if success {
+                Severity::Info
+            } else {
+                Severity::Warning
+            },
             "user_login",
             "session",
         )
-        .with_outcome(if success { Outcome::Success } else { Outcome::Failure })
+        .with_outcome(if success {
+            Outcome::Success
+        } else {
+            Outcome::Failure
+        })
         .with_details(serde_json::json!({ "username": username }))
     }
 
     /// User logout event
     pub fn logout(user_id: &str, username: &str) -> AuditEvent {
-        AuditEvent::new(EventCategory::Authentication, Severity::Info, "user_logout", "session")
-            .with_user(user_id, username)
+        AuditEvent::new(
+            EventCategory::Authentication,
+            Severity::Info,
+            "user_logout",
+            "session",
+        )
+        .with_user(user_id, username)
     }
 
     /// Data access event
     pub fn data_access(resource_type: &str, resource_id: &str) -> AuditEvent {
-        AuditEvent::new(EventCategory::DataAccess, Severity::Info, "data_read", resource_type)
-            .with_resource_id(resource_id)
+        AuditEvent::new(
+            EventCategory::DataAccess,
+            Severity::Info,
+            "data_read",
+            resource_type,
+        )
+        .with_resource_id(resource_id)
     }
 
     /// Data export event (PDP compliance)
     pub fn data_export(user_id: &str, export_type: &str) -> AuditEvent {
-        AuditEvent::new(EventCategory::DataExport, Severity::Info, "data_export", "export")
-            .with_details(serde_json::json!({ "export_type": export_type, "user_id": user_id }))
+        AuditEvent::new(
+            EventCategory::DataExport,
+            Severity::Info,
+            "data_export",
+            "export",
+        )
+        .with_details(serde_json::json!({ "export_type": export_type, "user_id": user_id }))
     }
 
     /// API access event
     pub fn api_access(endpoint: &str, method: &str) -> AuditEvent {
-        AuditEvent::new(EventCategory::ApiAccess, Severity::Info, "api_request", "endpoint")
-            .with_path(endpoint)
-            .with_details(serde_json::json!({ "method": method }))
+        AuditEvent::new(
+            EventCategory::ApiAccess,
+            Severity::Info,
+            "api_request",
+            "endpoint",
+        )
+        .with_path(endpoint)
+        .with_details(serde_json::json!({ "method": method }))
     }
 
     /// Security alert event
     pub fn security_alert(alert_type: &str, details: &str) -> AuditEvent {
-        AuditEvent::new(EventCategory::Security, Severity::Critical, alert_type, "security")
-            .with_details(serde_json::json!({ "details": details }))
+        AuditEvent::new(
+            EventCategory::Security,
+            Severity::Critical,
+            alert_type,
+            "security",
+        )
+        .with_details(serde_json::json!({ "details": details }))
     }
 }
 
@@ -264,8 +297,8 @@ mod tests {
 
     #[test]
     fn test_event_builder() {
-        let event = events::login("testuser", true)
-            .with_client(Some("192.168.1.1"), Some("TestAgent"));
+        let event =
+            events::login("testuser", true).with_client(Some("192.168.1.1"), Some("TestAgent"));
 
         assert_eq!(event.client.ip_address, Some("192.168.1.1".to_string()));
         assert!(matches!(event.outcome, Outcome::Success));
@@ -275,7 +308,7 @@ mod tests {
     fn test_serialization() {
         let event = events::api_access("/api/stocks", "GET");
         let json = serde_json::to_string(&event).unwrap();
-        
+
         assert!(json.contains("ApiAccess"));
         assert!(json.contains("/api/stocks"));
     }

@@ -57,9 +57,7 @@ pub enum StreamMessage {
         timestamp: i64,
     },
     /// Heartbeat to keep connection alive
-    Heartbeat {
-        timestamp: i64,
-    },
+    Heartbeat { timestamp: i64 },
 }
 
 /// Streaming state for managing broadcast channels
@@ -76,7 +74,10 @@ impl StreamingState {
     }
 
     /// Send a message to all connected clients
-    pub fn broadcast(&self, message: StreamMessage) -> Result<usize, broadcast::error::SendError<StreamMessage>> {
+    pub fn broadcast(
+        &self,
+        message: StreamMessage,
+    ) -> Result<usize, broadcast::error::SendError<StreamMessage>> {
         self.tx.send(message)
     }
 
@@ -160,16 +161,13 @@ pub fn broadcast_to_sse<F>(
 where
     F: Fn(&StreamMessage) -> bool + Send + 'static,
 {
-    BroadcastStream::new(receiver)
-        .filter_map(move |result| {
-            match result {
-                Ok(msg) if filter(&msg) => {
-                    let json = serde_json::to_string(&msg).unwrap_or_default();
-                    Some(Result::<_, Infallible>::Ok(Event::default().data(json)))
-                }
-                _ => None,
-            }
-        })
+    BroadcastStream::new(receiver).filter_map(move |result| match result {
+        Ok(msg) if filter(&msg) => {
+            let json = serde_json::to_string(&msg).unwrap_or_default();
+            Some(Result::<_, Infallible>::Ok(Event::default().data(json)))
+        }
+        _ => None,
+    })
 }
 
 #[cfg(test)]
@@ -210,14 +208,14 @@ mod tests {
     #[test]
     fn test_streaming_state() {
         let state = StreamingState::new();
-        
+
         let _rx1 = state.subscribe();
         let _rx2 = state.subscribe();
-        
+
         let msg = StreamMessage::Heartbeat {
             timestamp: 1705315200,
         };
-        
+
         // Should succeed with at least 1 receiver
         // Note: In actual broadcast, receivers get messages only after subscription
         let result = state.broadcast(msg);

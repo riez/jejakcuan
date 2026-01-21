@@ -47,11 +47,7 @@ impl EmailNotifier {
             super::NotificationPriority::Low => "#16a34a",
         };
 
-        let symbol = notification
-            .metadata
-            .symbol
-            .as_deref()
-            .unwrap_or("N/A");
+        let symbol = notification.metadata.symbol.as_deref().unwrap_or("N/A");
 
         format!(
             r#"<!DOCTYPE html>
@@ -93,7 +89,9 @@ impl EmailNotifier {
 impl NotificationSender for EmailNotifier {
     async fn send(&self, notification: &Notification) -> NotificationResult<()> {
         if !self.is_configured() {
-            return Err(NotificationError::NotConfigured("SMTP not configured".into()));
+            return Err(NotificationError::NotConfigured(
+                "SMTP not configured".into(),
+            ));
         }
 
         // Validate email format
@@ -128,8 +126,7 @@ impl NotificationSender for EmailNotifier {
     }
 
     fn is_configured(&self) -> bool {
-        !self.config.smtp_host.is_empty()
-            && !self.config.from_email.is_empty()
+        !self.config.smtp_host.is_empty() && !self.config.from_email.is_empty()
     }
 
     fn channel_type(&self) -> NotificationChannel {

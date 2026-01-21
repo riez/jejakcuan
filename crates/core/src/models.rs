@@ -132,9 +132,9 @@ mod tests {
             symbol: "UNVR".to_string(),
             timestamp: Utc::now(),
             composite_score: 50.0,
-            technical_score: 0.0,   // Minimum
+            technical_score: 0.0,     // Minimum
             fundamental_score: 100.0, // Maximum
-            sentiment_score: 50.0,  // Middle
+            sentiment_score: 50.0,    // Middle
             ml_score: 75.0,
         };
 

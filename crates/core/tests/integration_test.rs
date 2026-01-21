@@ -4,9 +4,7 @@
 //! and the composite scoring system.
 
 use jejakcuan_core::{
-    calculate_composite_score,
-    FundamentalInput, FundamentalScoreEngine,
-    ScoreWeights,
+    calculate_composite_score, FundamentalInput, FundamentalScoreEngine, ScoreWeights,
     TechnicalScoreEngine, TechnicalScoreInput,
 };
 use rust_decimal_macros::dec;
@@ -64,7 +62,7 @@ fn test_full_scoring_pipeline() {
 
     // Composite should be a weighted average within expected bounds
     assert!(composite >= 0.0 && composite <= 100.0);
-    
+
     // With bullish technical and strong fundamental, composite should be above neutral
     assert!(composite > 50.0);
 }
@@ -330,7 +328,10 @@ fn test_signals_generated() {
     // Should generate signals for the bullish indicators
     assert!(!result.signals.is_empty());
     assert!(result.signals.iter().any(|s| s.contains("RSI")));
-    assert!(result.signals.iter().any(|s| s.contains("Institutional") || s.contains("buying")));
+    assert!(result
+        .signals
+        .iter()
+        .any(|s| s.contains("Institutional") || s.contains("buying")));
 }
 
 #[test]
@@ -352,7 +353,10 @@ fn test_fundamental_assessment_categories() {
         ..Default::default()
     };
     let strong_result = engine.calculate(&strong_input);
-    assert_eq!(strong_result.assessment, jejakcuan_core::FundamentalAssessment::Strong);
+    assert_eq!(
+        strong_result.assessment,
+        jejakcuan_core::FundamentalAssessment::Strong
+    );
 
     // Weak fundamentals
     let weak_input = FundamentalInput {
@@ -367,6 +371,7 @@ fn test_fundamental_assessment_categories() {
     let weak_result = engine.calculate(&weak_input);
     assert!(matches!(
         weak_result.assessment,
-        jejakcuan_core::FundamentalAssessment::Weak | jejakcuan_core::FundamentalAssessment::Insufficient
+        jejakcuan_core::FundamentalAssessment::Weak
+            | jejakcuan_core::FundamentalAssessment::Insufficient
     ));
 }

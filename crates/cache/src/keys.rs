@@ -51,12 +51,7 @@ impl CacheKeys {
 
     /// Broker flow key: broker:flow:{symbol}:{date}
     pub fn broker_flow(symbol: &str, date: &str) -> String {
-        format!(
-            "{}:{}:{}",
-            prefix::BROKER_FLOW,
-            symbol.to_uppercase(),
-            date
-        )
+        format!("{}:{}:{}", prefix::BROKER_FLOW, symbol.to_uppercase(), date)
     }
 
     /// Alert key: alert:{alert_id}
@@ -118,10 +113,7 @@ mod tests {
 
     #[test]
     fn test_technical_score_key() {
-        assert_eq!(
-            CacheKeys::technical_score("tlkm"),
-            "score:technical:TLKM"
-        );
+        assert_eq!(CacheKeys::technical_score("tlkm"), "score:technical:TLKM");
     }
 
     #[test]

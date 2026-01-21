@@ -70,19 +70,21 @@ async fn add_to_watchlist(
     Json(req): Json<AddToWatchlistRequest>,
 ) -> Result<Json<WatchlistRow>, (axum::http::StatusCode, Json<WatchlistError>)> {
     let symbol = req.symbol.to_uppercase();
-    
+
     // First, check if the stock exists in the database
     let stock = repositories::stocks::get_stock_by_symbol(&state.db, &symbol)
         .await
-        .map_err(|e| (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(WatchlistError {
-                error: e.to_string(),
-                code: "INTERNAL_ERROR".to_string(),
-                symbol: symbol.clone(),
-            })
-        ))?;
-    
+        .map_err(|e| {
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(WatchlistError {
+                    error: e.to_string(),
+                    code: "INTERNAL_ERROR".to_string(),
+                    symbol: symbol.clone(),
+                }),
+            )
+        })?;
+
     let Some(stock) = stock else {
         return Err((
             axum::http::StatusCode::NOT_FOUND,
@@ -98,16 +100,13 @@ async fn add_to_watchlist(
         return Err((
             axum::http::StatusCode::BAD_REQUEST,
             Json(WatchlistError {
-                error: format!(
-                    "Stock '{}' is excluded (non-Syariah bank).",
-                    symbol
-                ),
+                error: format!("Stock '{}' is excluded (non-Syariah bank).", symbol),
                 code: "EXCLUDED_NON_SYARIAH_BANK".to_string(),
                 symbol: symbol.clone(),
             }),
         ));
     }
-    
+
     // Stock exists, proceed to add to watchlist
     let item = repositories::watchlist::add_to_watchlist(&state.db, &symbol)
         .await
@@ -118,10 +117,13 @@ async fn add_to_watchlist(
                 (
                     axum::http::StatusCode::NOT_FOUND,
                     Json(WatchlistError {
-                        error: format!("Stock '{}' not found. Please add the stock to the database first.", symbol),
+                        error: format!(
+                            "Stock '{}' not found. Please add the stock to the database first.",
+                            symbol
+                        ),
                         code: "STOCK_NOT_FOUND".to_string(),
                         symbol: symbol.clone(),
-                    })
+                    }),
                 )
             } else {
                 (
@@ -130,7 +132,7 @@ async fn add_to_watchlist(
                         error: e.to_string(),
                         code: "INTERNAL_ERROR".to_string(),
                         symbol: symbol.clone(),
-                    })
+                    }),
                 )
             }
         })?;

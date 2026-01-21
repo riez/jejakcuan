@@ -19,8 +19,16 @@ async fn login(
 ) -> Result<(CookieJar, Json<LoginResponse>), AuthError> {
     tracing::debug!("Login attempt for user: {}", req.username);
     tracing::debug!("Expected username: {}", state.config.username);
-    tracing::debug!("Password hash (first 50 chars): {}", &state.config.password_hash.chars().take(50).collect::<String>());
-    
+    tracing::debug!(
+        "Password hash (first 50 chars): {}",
+        &state
+            .config
+            .password_hash
+            .chars()
+            .take(50)
+            .collect::<String>()
+    );
+
     // Verify credentials
     if req.username != state.config.username {
         tracing::debug!("Username mismatch");

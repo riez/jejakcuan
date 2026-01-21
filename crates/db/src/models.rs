@@ -1,8 +1,8 @@
 //! Database models (row types)
 
 use chrono::{DateTime, NaiveDate, Utc};
-use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -13,7 +13,10 @@ where
     serializer.serialize_f64(value.to_f64().unwrap_or(0.0))
 }
 
-fn serialize_option_decimal_as_f64<S>(value: &Option<Decimal>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_option_decimal_as_f64<S>(
+    value: &Option<Decimal>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {

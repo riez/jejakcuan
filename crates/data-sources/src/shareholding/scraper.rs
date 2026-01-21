@@ -12,7 +12,9 @@
 //! - Respects rate limits and ToS
 //! - PDP Law compliant (no personal data)
 
-use super::models::{OwnershipChange, Shareholder, ShareholderType, ShareholdingSnapshot, ShareholdingSource};
+use super::models::{
+    OwnershipChange, Shareholder, ShareholderType, ShareholdingSnapshot, ShareholdingSource,
+};
 use crate::error::DataSourceError;
 use chrono::NaiveDate;
 use reqwest::Client;
@@ -97,7 +99,11 @@ impl ShareholdingScraper {
                 // Parse shareholding table from KSEI HTML
                 match self.parse_ksei_html(&html, symbol, date) {
                     Ok(Some(snapshot)) => {
-                        info!("Parsed KSEI data for {} with {} shareholders", symbol, snapshot.shareholders.len());
+                        info!(
+                            "Parsed KSEI data for {} with {} shareholders",
+                            symbol,
+                            snapshot.shareholders.len()
+                        );
                         Ok(Some(snapshot))
                     }
                     Ok(None) => Ok(None),
@@ -124,8 +130,9 @@ impl ShareholdingScraper {
         let document = Html::parse_document(html);
 
         // Common table selectors for KSEI-style pages
-        let table_selector = Selector::parse("table.shareholding, table.ownership, #shareholding-table")
-            .map_err(|_| DataSourceError::InvalidResponse("Invalid selector".into()))?;
+        let table_selector =
+            Selector::parse("table.shareholding, table.ownership, #shareholding-table")
+                .map_err(|_| DataSourceError::InvalidResponse("Invalid selector".into()))?;
         let row_selector = Selector::parse("tbody tr")
             .map_err(|_| DataSourceError::InvalidResponse("Invalid row selector".into()))?;
         let cell_selector = Selector::parse("td")
@@ -147,10 +154,9 @@ impl ShareholdingScraper {
                 let shares_text = cells[1].text().collect::<String>();
                 let pct_text = cells[2].text().collect::<String>();
 
-                if let (Ok(shares), Ok(pct)) = (
-                    parse_number(&shares_text),
-                    parse_percentage(&pct_text),
-                ) {
+                if let (Ok(shares), Ok(pct)) =
+                    (parse_number(&shares_text), parse_percentage(&pct_text))
+                {
                     if !name.is_empty() && shares > 0 {
                         let shareholder_type = ShareholderType::from_name(&name);
                         shareholders.push(Shareholder::with_type(
@@ -196,7 +202,10 @@ impl ShareholdingScraper {
 
         // OJK doesn't have a consistent public API
         // In production, this would scrape from their filings database
-        warn!("OJK scraper requires site-specific implementation for {}", symbol);
+        warn!(
+            "OJK scraper requires site-specific implementation for {}",
+            symbol
+        );
 
         Ok(vec![])
     }
@@ -231,7 +240,11 @@ impl ShareholdingScraper {
 
                 match self.parse_idx_html(&html, symbol, date) {
                     Ok(Some(snapshot)) => {
-                        info!("Parsed IDX data for {} with {} shareholders", symbol, snapshot.shareholders.len());
+                        info!(
+                            "Parsed IDX data for {} with {} shareholders",
+                            symbol,
+                            snapshot.shareholders.len()
+                        );
                         Ok(Some(snapshot))
                     }
                     Ok(None) => Ok(None),
@@ -258,8 +271,9 @@ impl ShareholdingScraper {
         let document = Html::parse_document(html);
 
         // IDX shareholding table selectors
-        let section_selector = Selector::parse("#shareholder, .shareholder-section, [data-section='shareholder']")
-            .map_err(|_| DataSourceError::InvalidResponse("Invalid selector".into()))?;
+        let section_selector =
+            Selector::parse("#shareholder, .shareholder-section, [data-section='shareholder']")
+                .map_err(|_| DataSourceError::InvalidResponse("Invalid selector".into()))?;
         let row_selector = Selector::parse("tr")
             .map_err(|_| DataSourceError::InvalidResponse("Invalid row selector".into()))?;
         let cell_selector = Selector::parse("td")
@@ -281,7 +295,10 @@ impl ShareholdingScraper {
 
             if cells.len() >= 2 {
                 let name = cells[0].text().collect::<String>().trim().to_string();
-                let shares_text = cells.get(1).map(|c| c.text().collect::<String>()).unwrap_or_default();
+                let shares_text = cells
+                    .get(1)
+                    .map(|c| c.text().collect::<String>())
+                    .unwrap_or_default();
                 let pct_text = cells.get(2).map(|c| c.text().collect::<String>());
 
                 if let Ok(shares) = parse_number(&shares_text) {
@@ -333,7 +350,10 @@ impl ShareholdingScraper {
             let text = table.text().collect::<String>().to_lowercase();
 
             // Check if table contains shareholder-related content
-            if text.contains("pemegang saham") || text.contains("shareholder") || text.contains("kepemilikan") {
+            if text.contains("pemegang saham")
+                || text.contains("shareholder")
+                || text.contains("kepemilikan")
+            {
                 let mut shareholders = Vec::new();
                 let mut total_shares: i64 = 0;
 
@@ -344,7 +364,9 @@ impl ShareholdingScraper {
                         let name = cells[0].text().collect::<String>().trim().to_string();
 
                         // Skip header rows
-                        if name.to_lowercase().contains("nama") || name.to_lowercase().contains("name") {
+                        if name.to_lowercase().contains("nama")
+                            || name.to_lowercase().contains("name")
+                        {
                             continue;
                         }
 
@@ -370,7 +392,8 @@ impl ShareholdingScraper {
                 // Recalculate percentages
                 if total_shares > 0 {
                     for shareholder in &mut shareholders {
-                        shareholder.percentage = Decimal::from(shareholder.shares_held * 100) / Decimal::from(total_shares);
+                        shareholder.percentage = Decimal::from(shareholder.shares_held * 100)
+                            / Decimal::from(total_shares);
                     }
                 }
 
@@ -527,9 +550,7 @@ fn parse_percentage(text: &str) -> Result<Decimal, ()> {
     // Handle comma as decimal separator
     let normalized = cleaned.replace(',', ".");
 
-    normalized
-        .parse::<Decimal>()
-        .map_err(|_| ())
+    normalized.parse::<Decimal>().map_err(|_| ())
 }
 
 #[cfg(test)]

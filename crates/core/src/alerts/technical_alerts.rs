@@ -17,20 +17,54 @@ use super::AlertPriority;
 /// Technical alert types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TechnicalAlertType {
-    RsiOverbought { rsi: Decimal },
-    RsiOversold { rsi: Decimal },
-    MacdBullishCrossover { macd: Decimal, signal: Decimal },
-    MacdBearishCrossover { macd: Decimal, signal: Decimal },
-    WyckoffAccumulation { confidence: u8 },
-    WyckoffDistribution { confidence: u8 },
-    WyckoffSpring { price: Decimal },
-    WyckoffUpthrust { price: Decimal },
-    VolumeSpike { rvol: Decimal },
-    PriceBreakout { price: Decimal, resistance: Decimal },
-    PriceBreakdown { price: Decimal, support: Decimal },
-    GoldenCross { ema_short: Decimal, ema_long: Decimal },
-    DeathCross { ema_short: Decimal, ema_long: Decimal },
-    BollingerSqueeze { bandwidth: Decimal },
+    RsiOverbought {
+        rsi: Decimal,
+    },
+    RsiOversold {
+        rsi: Decimal,
+    },
+    MacdBullishCrossover {
+        macd: Decimal,
+        signal: Decimal,
+    },
+    MacdBearishCrossover {
+        macd: Decimal,
+        signal: Decimal,
+    },
+    WyckoffAccumulation {
+        confidence: u8,
+    },
+    WyckoffDistribution {
+        confidence: u8,
+    },
+    WyckoffSpring {
+        price: Decimal,
+    },
+    WyckoffUpthrust {
+        price: Decimal,
+    },
+    VolumeSpike {
+        rvol: Decimal,
+    },
+    PriceBreakout {
+        price: Decimal,
+        resistance: Decimal,
+    },
+    PriceBreakdown {
+        price: Decimal,
+        support: Decimal,
+    },
+    GoldenCross {
+        ema_short: Decimal,
+        ema_long: Decimal,
+    },
+    DeathCross {
+        ema_short: Decimal,
+        ema_long: Decimal,
+    },
+    BollingerSqueeze {
+        bandwidth: Decimal,
+    },
 }
 
 /// Technical alert
@@ -177,12 +211,9 @@ impl TechnicalAlertEngine {
         }
 
         // EMA crossovers (Golden Cross / Death Cross)
-        if let (Some(ema20), Some(ema50), Some(prev20), Some(prev50)) = (
-            input.ema20,
-            input.ema50,
-            input.prev_ema20,
-            input.prev_ema50,
-        ) {
+        if let (Some(ema20), Some(ema50), Some(prev20), Some(prev50)) =
+            (input.ema20, input.ema50, input.prev_ema20, input.prev_ema50)
+        {
             // Golden Cross: EMA20 crosses above EMA50
             if prev20 <= prev50 && ema20 > ema50 {
                 alerts.push(TechnicalAlert::new(
@@ -306,7 +337,10 @@ impl Default for TechnicalAlertEngine {
 fn generate_tech_message(symbol: &str, alert_type: &TechnicalAlertType) -> String {
     match alert_type {
         TechnicalAlertType::RsiOverbought { rsi } => {
-            format!("{}: RSI overbought at {:.1} - potential reversal", symbol, rsi)
+            format!(
+                "{}: RSI overbought at {:.1} - potential reversal",
+                symbol, rsi
+            )
         }
         TechnicalAlertType::RsiOversold { rsi } => {
             format!("{}: RSI oversold at {:.1} - potential bounce", symbol, rsi)
@@ -418,9 +452,10 @@ mod tests {
             ..Default::default()
         };
         let alerts = engine.evaluate(&input);
-        assert!(alerts
-            .iter()
-            .any(|a| matches!(a.alert_type, TechnicalAlertType::MacdBullishCrossover { .. })));
+        assert!(alerts.iter().any(|a| matches!(
+            a.alert_type,
+            TechnicalAlertType::MacdBullishCrossover { .. }
+        )));
     }
 
     #[test]

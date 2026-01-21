@@ -66,9 +66,8 @@ impl TwelveDataWebSocket {
 
     /// Create from environment variable
     pub fn from_env() -> Result<Self, DataSourceError> {
-        let api_key = std::env::var("TWELVEDATA_API_KEY").map_err(|_| {
-            DataSourceError::InvalidResponse("TWELVEDATA_API_KEY not set".into())
-        })?;
+        let api_key = std::env::var("TWELVEDATA_API_KEY")
+            .map_err(|_| DataSourceError::InvalidResponse("TWELVEDATA_API_KEY not set".into()))?;
         Ok(Self::new(api_key))
     }
 
@@ -240,10 +239,7 @@ impl TwelveDataWebSocket {
 
             // Reconnect with exponential backoff
             if *running.read().await {
-                warn!(
-                    "Reconnecting in {}ms...",
-                    reconnect_delay
-                );
+                warn!("Reconnecting in {}ms...", reconnect_delay);
                 tokio::time::sleep(Duration::from_millis(reconnect_delay)).await;
                 reconnect_delay = (reconnect_delay * 2).min(MAX_RECONNECT_DELAY_MS);
             }
@@ -255,7 +251,9 @@ impl TwelveDataWebSocket {
         if let Some(tx) = &self.command_tx {
             tx.send(WebSocketCommand::Subscribe(symbols))
                 .await
-                .map_err(|_| DataSourceError::ApiError("Failed to send subscribe command".into()))?;
+                .map_err(|_| {
+                    DataSourceError::ApiError("Failed to send subscribe command".into())
+                })?;
         }
         Ok(())
     }
@@ -265,7 +263,9 @@ impl TwelveDataWebSocket {
         if let Some(tx) = &self.command_tx {
             tx.send(WebSocketCommand::Unsubscribe(symbols))
                 .await
-                .map_err(|_| DataSourceError::ApiError("Failed to send unsubscribe command".into()))?;
+                .map_err(|_| {
+                    DataSourceError::ApiError("Failed to send unsubscribe command".into())
+                })?;
         }
         Ok(())
     }

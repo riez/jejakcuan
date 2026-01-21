@@ -43,11 +43,7 @@ impl TelegramNotifier {
             super::NotificationPriority::Low => "🟢",
         };
 
-        let symbol = notification
-            .metadata
-            .symbol
-            .as_deref()
-            .unwrap_or("Unknown");
+        let symbol = notification.metadata.symbol.as_deref().unwrap_or("Unknown");
 
         format!(
             "{} *{}*\n\n{}\n\n📊 Symbol: `{}`",
@@ -60,7 +56,9 @@ impl TelegramNotifier {
 impl NotificationSender for TelegramNotifier {
     async fn send(&self, notification: &Notification) -> NotificationResult<()> {
         if !self.is_configured() {
-            return Err(NotificationError::NotConfigured("Telegram bot token missing".into()));
+            return Err(NotificationError::NotConfigured(
+                "Telegram bot token missing".into(),
+            ));
         }
 
         let message = self.format_message(notification);

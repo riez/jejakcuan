@@ -31,7 +31,9 @@ impl TwelveDataClient {
             .timeout(DEFAULT_TIMEOUT)
             .user_agent("JejakCuan/1.0")
             .build()
-            .map_err(|e| DataSourceError::ApiError(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| {
+                DataSourceError::ApiError(format!("Failed to create HTTP client: {}", e))
+            })?;
 
         Ok(Self { client, api_key })
     }
@@ -39,7 +41,9 @@ impl TwelveDataClient {
     /// Create client from TWELVEDATA_API_KEY environment variable
     pub fn from_env() -> Result<Self, DataSourceError> {
         let api_key = std::env::var("TWELVEDATA_API_KEY").map_err(|_| {
-            DataSourceError::InvalidResponse("TWELVEDATA_API_KEY environment variable not set".into())
+            DataSourceError::InvalidResponse(
+                "TWELVEDATA_API_KEY environment variable not set".into(),
+            )
         })?;
         Self::new(api_key)
     }
@@ -84,7 +88,10 @@ impl TwelveDataClient {
 
                     if status.is_server_error() {
                         warn!("Server error from TwelveData: {}", status);
-                        last_error = Some(DataSourceError::ApiError(format!("Server error: {}", status)));
+                        last_error = Some(DataSourceError::ApiError(format!(
+                            "Server error: {}",
+                            status
+                        )));
                         continue;
                     }
 
@@ -119,10 +126,7 @@ impl TwelveDataClient {
         start_date: Option<NaiveDate>,
         end_date: Option<NaiveDate>,
     ) -> Result<TimeSeriesResponse, DataSourceError> {
-        let mut params = vec![
-            ("symbol", symbol),
-            ("interval", interval.as_str()),
-        ];
+        let mut params = vec![("symbol", symbol), ("interval", interval.as_str())];
 
         let output_str;
         if let Some(size) = output_size {

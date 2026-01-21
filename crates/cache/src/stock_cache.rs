@@ -48,8 +48,8 @@ impl StockCache {
     pub fn new(client: CacheClient) -> Self {
         Self {
             client,
-            quote_ttl: Duration::from_secs(30),       // 30 seconds for quotes
-            score_ttl: Duration::from_secs(300),      // 5 minutes for scores
+            quote_ttl: Duration::from_secs(30), // 30 seconds for quotes
+            score_ttl: Duration::from_secs(300), // 5 minutes for scores
         }
     }
 
@@ -86,7 +86,10 @@ impl StockCache {
     // Technical score operations
 
     /// Get cached technical score
-    pub async fn get_technical_score(&mut self, symbol: &str) -> CacheResult<Option<CachedTechnicalScore>> {
+    pub async fn get_technical_score(
+        &mut self,
+        symbol: &str,
+    ) -> CacheResult<Option<CachedTechnicalScore>> {
         let key = CacheKeys::technical_score(symbol);
         self.client.get(&key).await
     }
@@ -100,7 +103,11 @@ impl StockCache {
     // Broker flow operations
 
     /// Get cached broker flow
-    pub async fn get_broker_flow(&mut self, symbol: &str, date: &str) -> CacheResult<Option<CachedBrokerFlow>> {
+    pub async fn get_broker_flow(
+        &mut self,
+        symbol: &str,
+        date: &str,
+    ) -> CacheResult<Option<CachedBrokerFlow>> {
         let key = CacheKeys::broker_flow(symbol, date);
         self.client.get(&key).await
     }
@@ -109,7 +116,9 @@ impl StockCache {
     pub async fn set_broker_flow(&mut self, flow: &CachedBrokerFlow) -> CacheResult<()> {
         let key = CacheKeys::broker_flow(&flow.symbol, &flow.date);
         // Broker flow data is daily, cache for longer
-        self.client.set_with_ttl(&key, flow, Duration::from_secs(3600)).await
+        self.client
+            .set_with_ttl(&key, flow, Duration::from_secs(3600))
+            .await
     }
 
     // Utility operations
@@ -142,7 +151,11 @@ impl StockCache {
     }
 
     /// Get leaderboard top N
-    pub async fn get_leaderboard(&mut self, category: &str, top_n: usize) -> CacheResult<Vec<String>> {
+    pub async fn get_leaderboard(
+        &mut self,
+        category: &str,
+        top_n: usize,
+    ) -> CacheResult<Vec<String>> {
         let key = CacheKeys::leaderboard(category);
         self.client.zrevrange(&key, 0, (top_n - 1) as isize).await
     }

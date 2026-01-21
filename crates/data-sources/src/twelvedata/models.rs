@@ -31,9 +31,8 @@ pub struct PriceUpdate {
 
 impl PriceUpdate {
     pub fn datetime(&self) -> Option<DateTime<Utc>> {
-        self.timestamp.and_then(|ts| {
-            DateTime::from_timestamp(ts, 0)
-        })
+        self.timestamp
+            .and_then(|ts| DateTime::from_timestamp(ts, 0))
     }
 }
 

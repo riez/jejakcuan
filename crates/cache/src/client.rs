@@ -47,7 +47,10 @@ impl CacheClient {
     }
 
     /// Get a value from cache
-    pub async fn get<T: serde::de::DeserializeOwned>(&mut self, key: &str) -> CacheResult<Option<T>> {
+    pub async fn get<T: serde::de::DeserializeOwned>(
+        &mut self,
+        key: &str,
+    ) -> CacheResult<Option<T>> {
         let value: Option<String> = self.conn.get(key).await?;
 
         match value {
@@ -99,17 +102,14 @@ impl CacheClient {
     }
 
     /// Set multiple values at once
-    pub async fn mset<T: serde::Serialize>(
-        &mut self,
-        pairs: &[(&str, &T)],
-    ) -> CacheResult<()> {
+    pub async fn mset<T: serde::Serialize>(&mut self, pairs: &[(&str, &T)]) -> CacheResult<()> {
         let serialized: Vec<(&str, String)> = pairs
             .iter()
             .map(|(k, v)| (*k, serde_json::to_string(v).unwrap_or_default()))
             .collect();
 
         let refs: Vec<(&str, &str)> = serialized.iter().map(|(k, v)| (*k, v.as_str())).collect();
-        
+
         redis::cmd("MSET")
             .arg(&refs[..])
             .query_async(&mut self.conn)
@@ -153,7 +153,12 @@ impl CacheClient {
     }
 
     /// Get top N from sorted set
-    pub async fn zrevrange(&mut self, key: &str, start: isize, stop: isize) -> CacheResult<Vec<String>> {
+    pub async fn zrevrange(
+        &mut self,
+        key: &str,
+        start: isize,
+        stop: isize,
+    ) -> CacheResult<Vec<String>> {
         let members: Vec<String> = self.conn.zrevrange(key, start, stop).await?;
         Ok(members)
     }

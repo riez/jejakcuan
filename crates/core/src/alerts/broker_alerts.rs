@@ -292,10 +292,7 @@ fn generate_alert_message(symbol: &str, alert_type: &BrokerAlertType) -> String 
             )
         }
         BrokerAlertType::ForeignOutflow { net_value, .. } => {
-            format!(
-                "{}: Foreign outflow detected of Rp{:.0}",
-                symbol, net_value
-            )
+            format!("{}: Foreign outflow detected of Rp{:.0}", symbol, net_value)
         }
         BrokerAlertType::InstitutionalAccumulation {
             score,

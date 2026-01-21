@@ -48,8 +48,7 @@ pub fn calculate_sector_averages(sector: &str, peer_ratios: &[ValuationRatios]) 
 
     let avg_pe = calculate_average(peer_ratios.iter().filter_map(|r| r.pe_ratio).collect());
     let avg_pb = calculate_average(peer_ratios.iter().filter_map(|r| r.pb_ratio).collect());
-    let avg_ev_ebitda =
-        calculate_average(peer_ratios.iter().filter_map(|r| r.ev_ebitda).collect());
+    let avg_ev_ebitda = calculate_average(peer_ratios.iter().filter_map(|r| r.ev_ebitda).collect());
     let avg_roe = calculate_average(peer_ratios.iter().filter_map(|r| r.roe).collect());
     let avg_profit_margin =
         calculate_average(peer_ratios.iter().filter_map(|r| r.profit_margin).collect());
@@ -75,7 +74,11 @@ fn calculate_average(values: Vec<Decimal>) -> Option<Decimal> {
 }
 
 /// Calculate percentile rank (lower is better for P/E, P/B, EV/EBITDA)
-pub fn calculate_percentile(value: Decimal, all_values: &[Decimal], lower_is_better: bool) -> Decimal {
+pub fn calculate_percentile(
+    value: Decimal,
+    all_values: &[Decimal],
+    lower_is_better: bool,
+) -> Decimal {
     if all_values.is_empty() {
         return dec!(50);
     }
@@ -101,14 +104,8 @@ pub fn compare_to_peers(
     let total_peers = peer_ratios.len();
 
     // Collect peer values for percentile calculation
-    let pe_values: Vec<Decimal> = peer_ratios
-        .iter()
-        .filter_map(|(_, r)| r.pe_ratio)
-        .collect();
-    let pb_values: Vec<Decimal> = peer_ratios
-        .iter()
-        .filter_map(|(_, r)| r.pb_ratio)
-        .collect();
+    let pe_values: Vec<Decimal> = peer_ratios.iter().filter_map(|(_, r)| r.pe_ratio).collect();
+    let pb_values: Vec<Decimal> = peer_ratios.iter().filter_map(|(_, r)| r.pb_ratio).collect();
     let ev_values: Vec<Decimal> = peer_ratios
         .iter()
         .filter_map(|(_, r)| r.ev_ebitda)
@@ -303,7 +300,10 @@ mod tests {
     #[test]
     fn test_sector_classification() {
         assert_eq!(IdxSector::from_sector_name("Banking"), IdxSector::Banking);
-        assert_eq!(IdxSector::from_sector_name("Coal Mining"), IdxSector::Mining);
+        assert_eq!(
+            IdxSector::from_sector_name("Coal Mining"),
+            IdxSector::Mining
+        );
         assert_eq!(
             IdxSector::from_sector_name("Telecommunications"),
             IdxSector::Telco

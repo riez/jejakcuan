@@ -24,11 +24,11 @@ pub struct RetentionPolicy {
 impl Default for RetentionPolicy {
     fn default() -> Self {
         Self {
-            auth_logs_days: 365,        // 1 year
-            data_access_days: 90,       // 3 months
-            security_logs_days: 730,    // 2 years (PDP compliance)
-            api_logs_days: 30,          // 30 days
-            default_days: 90,           // 3 months
+            auth_logs_days: 365,     // 1 year
+            data_access_days: 90,    // 3 months
+            security_logs_days: 730, // 2 years (PDP compliance)
+            api_logs_days: 30,       // 30 days
+            default_days: 90,        // 3 months
         }
     }
 }
@@ -38,11 +38,11 @@ impl RetentionPolicy {
     /// Create policy compliant with Indonesian PDP Law
     pub fn pdp_compliant() -> Self {
         Self {
-            auth_logs_days: 365,        // Authentication records
-            data_access_days: 180,      // Personal data access logs
-            security_logs_days: 730,    // Security incident records
-            api_logs_days: 90,          // API access patterns
-            default_days: 180,          // General retention
+            auth_logs_days: 365,     // Authentication records
+            data_access_days: 180,   // Personal data access logs
+            security_logs_days: 730, // Security incident records
+            api_logs_days: 90,       // API access patterns
+            default_days: 180,       // General retention
         }
     }
 }
@@ -65,7 +65,9 @@ impl RetentionService {
 
         // Clean auth logs
         let auth_cutoff = now - Duration::days(self.policy.auth_logs_days);
-        report.auth_deleted = self.delete_by_category("Authentication", auth_cutoff).await?;
+        report.auth_deleted = self
+            .delete_by_category("Authentication", auth_cutoff)
+            .await?;
 
         // Clean data access logs
         let data_cutoff = now - Duration::days(self.policy.data_access_days);
@@ -125,7 +127,10 @@ impl RetentionService {
     }
 
     /// Archive old logs before deletion (for compliance)
-    pub async fn archive_and_cleanup(&self, archive_path: &str) -> Result<CleanupReport, sqlx::Error> {
+    pub async fn archive_and_cleanup(
+        &self,
+        archive_path: &str,
+    ) -> Result<CleanupReport, sqlx::Error> {
         // In production, would export to S3/cold storage before cleanup
         info!("Archiving audit logs to {} before cleanup", archive_path);
         self.cleanup().await
@@ -187,7 +192,7 @@ mod tests {
     fn test_pdp_compliant_policy() {
         let policy = RetentionPolicy::pdp_compliant();
         assert!(policy.security_logs_days >= 365); // At least 1 year
-        assert!(policy.data_access_days >= 90);    // At least 3 months
+        assert!(policy.data_access_days >= 90); // At least 3 months
     }
 
     #[test]
