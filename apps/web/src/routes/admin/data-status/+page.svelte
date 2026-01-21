@@ -391,6 +391,21 @@
 			delete categoryJobPolling[category];
 		}
 	}
+	
+	function cancelCategoryRefresh(category: string) {
+		// Stop polling
+		if (categoryJobPolling[category]) {
+			clearInterval(categoryJobPolling[category]);
+			delete categoryJobPolling[category];
+		}
+		
+		// Reset loading state
+		categoryLoading[category] = false;
+		categoryLoading = { ...categoryLoading };
+		
+		// Keep the logs but mark as cancelled (don't clear, so user can see what was running)
+		console.log(`Cancelled refresh for category: ${category}`);
+	}
 
 	function getSourcesByCategory(category: string): GranularDataSource[] {
 		if (!data?.by_category) return [];
@@ -552,7 +567,16 @@
 								{/if}
 							</span>
 						</div>
-						{#if !isCategoryLoading}
+						{#if isCategoryLoading}
+							<button 
+								class="btn btn-sm variant-ghost-error"
+								on:click={() => cancelCategoryRefresh(category)}
+								title="Cancel refresh"
+							>
+								<span>■</span>
+								<span>Stop</span>
+							</button>
+						{:else}
 							<button 
 								class="text-surface-500 hover:text-surface-700 text-lg leading-none"
 								on:click={() => dismissCategoryMessage(category)}
