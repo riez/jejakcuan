@@ -54,6 +54,7 @@
           <a href="/watchlist" class="btn btn-sm variant-ghost-surface">Watchlist</a>
           <a href="/market" class="btn btn-sm variant-ghost-surface">Market</a>
           <a href="/signals" class="btn btn-sm variant-ghost-surface">Signals</a>
+          <a href="/admin/data-status" class="btn btn-sm variant-ghost-tertiary">Data Status</a>
           <button onclick={handleLogout} class="btn btn-sm variant-ghost-error">Logout</button>
         </svelte:fragment>
       </AppBar>

@@ -29,7 +29,7 @@
   };
 </script>
 
-<div class="card p-4 hover:ring-2 ring-primary-500 transition-all">
+<a href="/stock/{signal.symbol}?tab=analysis" class="block card p-4 hover:ring-2 ring-primary-500 transition-all no-underline">
   <div class="flex items-start justify-between gap-4">
     <!-- Signal Type Badge -->
     <div class="flex items-center gap-3">
@@ -52,9 +52,7 @@
 
   <!-- Stock Info -->
   <div class="mt-3">
-    <a href="/stock/{signal.symbol}" class="anchor">
-      <h3 class="h4 font-bold">{signal.symbol}</h3>
-    </a>
+    <h3 class="h4 font-bold text-primary-600 dark:text-primary-400">{signal.symbol}</h3>
     <p class="text-sm text-surface-600-300-token">{signal.stockName}</p>
   </div>
 
@@ -96,4 +94,4 @@
   <p class="mt-3 text-xs text-surface-500">
     {signal.timestamp.toLocaleString()}
   </p>
-</div>
+</a>
