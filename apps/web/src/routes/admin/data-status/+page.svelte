@@ -14,6 +14,8 @@
 	let triggerMessages: Record<string, TriggerResponse | null> = {};
 	let categoryLoading: Record<string, boolean> = {};
 	let categoryMessages: Record<string, CategoryTriggerResponse | null> = {};
+	let categoryJobLogs: Record<string, Job[]> = {};
+	let categoryJobPolling: Record<string, ReturnType<typeof setInterval>> = {};
 	let expandedCategories: Record<string, boolean> = {
 		broker: true,
 		prices: true,
@@ -162,18 +164,72 @@
 	async function triggerCategoryRefresh(category: string) {
 		categoryLoading[category] = true;
 		categoryMessages[category] = null;
+		categoryJobLogs[category] = [];
+		
+		// Stop any existing polling for this category
+		if (categoryJobPolling[category]) {
+			clearInterval(categoryJobPolling[category]);
+			delete categoryJobPolling[category];
+		}
 		
 		try {
 			const response = await api.triggerCategory(category);
 			categoryMessages[category] = response;
 			
-			await new Promise(resolve => setTimeout(resolve, 1000));
-			await fetchStatus();
+			// Initialize job logs with triggered jobs
+			const jobs: Job[] = response.triggered
+				.filter(t => t.job)
+				.map(t => t.job as Job);
+			categoryJobLogs[category] = jobs;
+			categoryJobLogs = { ...categoryJobLogs };
+			
+			// Start polling for job updates if there are triggered jobs
+			if (jobs.length > 0) {
+				startCategoryJobPolling(category, jobs.map(j => j.id));
+			} else {
+				categoryLoading[category] = false;
+			}
 		} catch (e) {
 			console.error(`Failed to trigger category ${category}:`, e);
-		} finally {
 			categoryLoading[category] = false;
 		}
+	}
+	
+	function startCategoryJobPolling(category: string, jobIds: string[]) {
+		categoryJobPolling[category] = setInterval(async () => {
+			try {
+				const updatedJobs: Job[] = [];
+				let allComplete = true;
+				
+				for (const jobId of jobIds) {
+					try {
+						const job = await api.getJob(jobId);
+						updatedJobs.push(job);
+						
+						if (job.status === 'running' || job.status === 'pending') {
+							allComplete = false;
+						}
+					} catch (e) {
+						console.error(`Failed to fetch job ${jobId}:`, e);
+					}
+				}
+				
+				categoryJobLogs[category] = updatedJobs;
+				categoryJobLogs = { ...categoryJobLogs };
+				
+				if (allComplete) {
+					clearInterval(categoryJobPolling[category]);
+					delete categoryJobPolling[category];
+					categoryLoading[category] = false;
+					
+					// Refresh status after all jobs complete
+					await new Promise(resolve => setTimeout(resolve, 500));
+					await fetchStatus();
+				}
+			} catch (e) {
+				console.error(`Failed to poll category jobs for ${category}:`, e);
+			}
+		}, 2000);
 	}
 
 	async function refreshAllSources() {
@@ -275,6 +331,12 @@
 
 	function dismissCategoryMessage(category: string) {
 		categoryMessages[category] = null;
+		categoryJobLogs[category] = [];
+		categoryJobLogs = { ...categoryJobLogs };
+		if (categoryJobPolling[category]) {
+			clearInterval(categoryJobPolling[category]);
+			delete categoryJobPolling[category];
+		}
 	}
 
 	function getSourcesByCategory(category: string): GranularDataSource[] {
@@ -293,6 +355,7 @@
 			clearInterval(refreshInterval);
 		}
 		Object.values(jobPollingIntervals).forEach(interval => clearInterval(interval));
+		Object.values(categoryJobPolling).forEach(interval => clearInterval(interval));
 	});
 </script>
 
@@ -406,24 +469,83 @@
 					</button>
 				</div>
 
-				{#if categoryMessage}
-					<div class="mx-4 mb-2 p-3 rounded bg-tertiary-500/20 text-tertiary-700 dark:text-tertiary-300 text-sm">
-						<div class="flex justify-between items-start">
-							<div>
-								<div class="font-medium">Category Refresh: {categoryMessage.triggered.length} triggered, {categoryMessage.skipped.length} skipped</div>
-								{#if categoryMessage.skipped.length > 0}
-									<div class="text-xs mt-1">
-										Skipped: {categoryMessage.skipped.map(s => `${s.source_id} (${s.reason})`).join(', ')}
-									</div>
+			{#if categoryMessage || (categoryJobLogs[category] && categoryJobLogs[category].length > 0)}
+				{@const jobs = categoryJobLogs[category] || []}
+				{@const completedCount = jobs.filter(j => j.status === 'completed').length}
+				{@const failedCount = jobs.filter(j => j.status === 'failed').length}
+				{@const runningCount = jobs.filter(j => j.status === 'running' || j.status === 'pending').length}
+				
+				<div class="mx-4 mb-2 p-3 rounded bg-surface-100-800-token border border-surface-300-600-token text-sm">
+					<div class="flex justify-between items-start mb-2">
+						<div class="font-medium flex items-center gap-2">
+							{#if runningCount > 0}
+								<ProgressRadial width="w-4" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
+							{/if}
+							<span>
+								{#if categoryMessage}
+									{categoryMessage.triggered.length} jobs triggered
+									{#if categoryMessage.skipped.length > 0}
+										, {categoryMessage.skipped.length} skipped
+									{/if}
 								{/if}
-							</div>
+								{#if jobs.length > 0}
+									— {completedCount} done
+									{#if failedCount > 0}
+										, <span class="text-error-500">{failedCount} failed</span>
+									{/if}
+									{#if runningCount > 0}
+										, {runningCount} running
+									{/if}
+								{/if}
+							</span>
+						</div>
+						{#if !isCategoryLoading}
 							<button 
-								class="text-tertiary-500 hover:text-tertiary-700 text-lg leading-none"
+								class="text-surface-500 hover:text-surface-700 text-lg leading-none"
 								on:click={() => dismissCategoryMessage(category)}
 							>×</button>
-						</div>
+						{/if}
 					</div>
-				{/if}
+					
+					{#if jobs.length > 0}
+						<div class="space-y-1 max-h-48 overflow-y-auto font-mono text-xs bg-surface-900/50 rounded p-2">
+							{#each jobs as job}
+								{@const elapsed = job.duration_secs ?? (job.status === 'running' ? ((Date.now() - new Date(job.started_at).getTime()) / 1000) : null)}
+								<div class="flex items-start gap-2 py-0.5 {job.status === 'failed' ? 'text-error-400' : job.status === 'completed' ? 'text-success-400' : 'text-surface-300'}">
+									<span class="flex-shrink-0 w-5">
+										{#if job.status === 'running'}
+											<span class="animate-pulse">●</span>
+										{:else if job.status === 'pending'}
+											<span class="text-surface-500">○</span>
+										{:else if job.status === 'completed'}
+											<span>✓</span>
+										{:else if job.status === 'failed'}
+											<span>✗</span>
+										{/if}
+									</span>
+									<span class="flex-1 truncate" title={job.source_name}>{job.source_name}</span>
+									<span class="flex-shrink-0 text-surface-500">
+										{#if elapsed !== null}
+											{elapsed.toFixed(1)}s
+										{/if}
+									</span>
+								</div>
+								{#if job.status === 'failed' && job.message}
+									<div class="ml-7 text-error-400/80 text-[10px] truncate" title={job.message}>
+										{job.message}
+									</div>
+								{/if}
+							{/each}
+						</div>
+					{/if}
+					
+					{#if categoryMessage?.skipped && categoryMessage.skipped.length > 0}
+						<div class="mt-2 text-xs text-surface-500">
+							Skipped: {categoryMessage.skipped.map(s => s.source_id).join(', ')}
+						</div>
+					{/if}
+				</div>
+			{/if}
 
 				{#if isExpanded}
 					<div class="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
