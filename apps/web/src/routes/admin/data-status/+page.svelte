@@ -406,6 +406,28 @@
 		// Keep the logs but mark as cancelled (don't clear, so user can see what was running)
 		console.log(`Cancelled refresh for category: ${category}`);
 	}
+	
+	function cancelSourceRefresh(sourceId: string) {
+		// Stop polling for this source
+		if (jobPollingIntervals[sourceId]) {
+			clearInterval(jobPollingIntervals[sourceId]);
+			delete jobPollingIntervals[sourceId];
+		}
+		
+		// Reset loading state
+		sourceLoadingStates[sourceId] = false;
+		sourceLoadingStates = { ...sourceLoadingStates };
+		
+		// Clear active job
+		delete activeJobs[sourceId];
+		activeJobs = { ...activeJobs };
+		
+		// Clear trigger message
+		triggerMessages[sourceId] = null;
+		triggerMessages = { ...triggerMessages };
+		
+		console.log(`Cancelled refresh for source: ${sourceId}`);
+	}
 
 	function getSourcesByCategory(category: string): GranularDataSource[] {
 		if (!data?.by_category) return [];
@@ -656,6 +678,12 @@
 											{#if activeJob.duration_secs}
 												<span class="text-xs text-surface-400">{activeJob.duration_secs.toFixed(1)}s elapsed</span>
 											{/if}
+											<button
+												class="btn btn-sm variant-filled-error mt-2"
+												on:click={() => cancelSourceRefresh(source.id)}
+											>
+												■ Stop
+											</button>
 										</div>
 									</div>
 								{:else if isLoading}
@@ -663,6 +691,12 @@
 										<div class="flex flex-col items-center gap-2">
 											<ProgressRadial width="w-8" stroke={100} meter="stroke-primary-500" track="stroke-primary-500/30" />
 											<span class="text-sm font-medium">Starting...</span>
+											<button
+												class="btn btn-sm variant-filled-error mt-2"
+												on:click={() => cancelSourceRefresh(source.id)}
+											>
+												■ Stop
+											</button>
 										</div>
 									</div>
 								{/if}
